@@ -21,3 +21,4 @@ export const darkTheme: Theme = {
   timing,
   isDark: true,
 }
+

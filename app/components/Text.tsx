@@ -47,6 +47,7 @@ export interface TextProps extends RNTextProps {
    * Children components.
    */
   children?: ReactNode
+  includeFontPadding?: boolean
 }
 
 /**
