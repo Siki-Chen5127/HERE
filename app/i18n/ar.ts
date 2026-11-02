@@ -1,4 +1,3 @@
-import demoAr from "./demo-ar"
 import { Translations } from "./en"
 
 const ar: Translations = {
@@ -119,7 +118,7 @@ const ar: Translations = {
     },
   },
 
-  ...demoAr,
+  
 }
 
 export default ar

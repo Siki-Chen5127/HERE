@@ -27,6 +27,7 @@ import { initialWindowMetrics, SafeAreaProvider } from "react-native-safe-area-c
 import { AuthProvider } from "./context/AuthContext"
 import { initI18n } from "./i18n"
 import { AppNavigator } from "./navigators/AppNavigator"
+import { initializeDatabase } from "./services/database"
 import { useNavigationPersistence } from "./navigators/navigationUtilities"
 import { ThemeProvider } from "./theme/context"
 import { customFontsToLoad } from "./theme/typography"
@@ -72,6 +73,12 @@ export function App() {
   const [isI18nInitialized, setIsI18nInitialized] = useState(false)
 
   useEffect(() => {
+    try {
+      initializeDatabase()
+    } catch (error) {
+      console.error("[Database] 初始化失败", error)
+    }
+
     initI18n()
       .then(() => setIsI18nInitialized(true))
       .then(() => loadDateFnsLocale())

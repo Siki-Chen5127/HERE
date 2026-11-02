@@ -15,11 +15,11 @@
     "**/*"
   ],
   "android": {
-    "icon": "./assets/images/app-icon-android-legacy.png",
+    "icon": "./assets/images/app-icon-all.png",
     "package": "com.here",
     "adaptiveIcon": {
-      "foregroundImage": "./assets/images/app-icon-android-adaptive-foreground.png",
-      "backgroundImage": "./assets/images/app-icon-android-adaptive-background.png"
+      "foregroundImage": "./assets/images/app-icon-all.png",
+      "backgroundImage": "./assets/images/app-icon-all.png"
     },
     "allowBackup": false,
     "edgeToEdgeEnabled": true
@@ -62,6 +62,10 @@
   "extra": {
     "ignite": {
       "version": "11.3.2"
+    },
+    "eas": {
+      "projectId": "288006fe-0a30-4db2-bb0e-810f23a9210b"
     }
-  }
+  },
+  "owner": "siki_chen"
 }

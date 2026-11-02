@@ -1,4 +1,3 @@
-import demoEn from "./demo-en"
 
 const en = {
   common: {
@@ -122,7 +121,7 @@ const en = {
     },
   },
 
-  ...demoEn,
+  
 }
 
 export default en

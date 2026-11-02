@@ -1,8 +1,6 @@
 import { ReactNode, forwardRef, ForwardedRef } from "react"
-// eslint-disable-next-line no-restricted-imports
 import { StyleProp, Text as RNText, TextProps as RNTextProps, TextStyle } from "react-native"
 import { TOptions } from "i18next"
-
 import { isRTL, TxKeyPath } from "@/i18n"
 import { translate } from "@/i18n/translate"
 import { useAppTheme } from "@/theme/context"
@@ -14,39 +12,15 @@ type Weights = keyof typeof typography.primary
 type Presets = "default" | "bold" | "heading" | "subheading" | "formLabel" | "formHelper"
 
 export interface TextProps extends RNTextProps {
-  /**
-   * Text which is looked up via i18n.
-   */
   tx?: TxKeyPath
-  /**
-   * The text to display if not using `tx` or nested components.
-   */
   text?: string
-  /**
-   * Optional options to pass to i18n. Useful for interpolation
-   * as well as explicitly setting locale or translation fallbacks.
-   */
   txOptions?: TOptions
-  /**
-   * An optional style override useful for padding & margin.
-   */
   style?: StyleProp<TextStyle>
-  /**
-   * One of the different types of text presets.
-   */
   preset?: Presets
-  /**
-   * Text weight modifier.
-   */
   weight?: Weights
-  /**
-   * Text size modifier.
-   */
   size?: Sizes
-  /**
-   * Children components.
-   */
   children?: ReactNode
+  fit?: boolean
 }
 
 /**
@@ -69,11 +43,19 @@ export const Text = forwardRef(function Text(props: TextProps, ref: ForwardedRef
     themed($presets[preset]),
     weight && $fontWeightStyles[weight],
     size && $sizeStyles[size],
+    props.fit && { flexShrink: 1 },
     $styleOverride,
   ]
 
-  return (
-    <RNText {...rest} style={$styles} ref={ref}>
+ return (
+    <RNText 
+      {...rest} 
+      style={$styles} 
+      ref={ref}
+      // --- 修改点 2: 关键！增加 textBreakStrategy 属性 ---
+      // 这能解决 Android 上很多奇怪的断行和截断问题
+      textBreakStrategy="simple" 
+    >
       {content}
     </RNText>
   )

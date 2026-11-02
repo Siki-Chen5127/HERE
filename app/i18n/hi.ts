@@ -1,4 +1,4 @@
-import demoHi from "./demo-hi"
+
 import { Translations } from "./en"
 
 const hi: Translations = {
@@ -123,7 +123,7 @@ const hi: Translations = {
     },
   },
 
-  ...demoHi,
+  
 }
 
 export default hi

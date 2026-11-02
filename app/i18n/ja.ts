@@ -1,4 +1,4 @@
-import demoJa from "./demo-ja"
+
 import { Translations } from "./en"
 
 const ja: Translations = {
@@ -123,7 +123,7 @@ const ja: Translations = {
     },
   },
 
-  ...demoJa,
+  
 }
 
 export default ja

@@ -36,6 +36,9 @@ module.exports = ({ config }: ConfigContext): Partial<ExpoConfig> => {
         ],
       },
     },
-    plugins: [...existingPlugins],
+    plugins: [
+      "expo-sqlite",
+      "./plugins/withWindowsNativeBuildFixes",
+    ],
   }
 }

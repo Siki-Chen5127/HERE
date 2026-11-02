@@ -7,33 +7,46 @@ import {
 } from "@react-navigation/native"
 import { NativeStackScreenProps } from "@react-navigation/native-stack"
 
-// Demo Tab Navigator types
-export type DemoTabParamList = {
-  DemoCommunity: undefined
-  DemoShowroom: { queryIndex?: string; itemIndex?: string }
-  DemoDebug: undefined
-  DemoPodcastList: undefined
+// 
+export type MainBottomTabParamList = {
+  Main: undefined
+  Statistics: undefined
+  Settings: undefined
 }
-
-// App Stack Navigator types
+export type MainStackParamList = {
+  Tabs: NavigatorScreenParams<MainBottomTabParamList>
+  Contacts: undefined
+  ContactEdit: undefined
+  Hardware: undefined
+  Trajectory: undefined
+  ProfileEdit: undefined
+  AiChat: undefined
+  SosAlert: undefined
+  FallAlert: undefined
+  CriticalAlert: undefined
+}
 export type AppStackParamList = {
-  Welcome: undefined
+  // --- “未认证”区域 ---
   Login: undefined
-  Demo: NavigatorScreenParams<DemoTabParamList>
-  // 🔥 Your screens go here
-  // IGNITE_GENERATOR_ANCHOR_APP_STACK_PARAM_LIST
-}
 
+  // --- “已认证”区域 ---
+  PersonaSelect: undefined
+  Main: NavigatorScreenParams<MainStackParamList>
+}
+// -----------------------------------------------------------------
+
+// (4. 保持不变)
 export type AppStackScreenProps<T extends keyof AppStackParamList> = NativeStackScreenProps<
   AppStackParamList,
   T
 >
-
-export type DemoTabScreenProps<T extends keyof DemoTabParamList> = CompositeScreenProps<
-  BottomTabScreenProps<DemoTabParamList, T>,
+export type MainStackScreenProps<T extends keyof MainStackParamList> = CompositeScreenProps<
+  NativeStackScreenProps<MainStackParamList, T>,
   AppStackScreenProps<keyof AppStackParamList>
 >
-
-export interface NavigationProps extends Partial<
-  ComponentProps<typeof NavigationContainer<AppStackParamList>>
-> {}
+export type MainBottomTabScreenProps<T extends keyof MainBottomTabParamList> = CompositeScreenProps<
+  BottomTabScreenProps<MainBottomTabParamList, T>,
+  AppStackScreenProps<keyof AppStackParamList>
+>
+export interface NavigationProps
+  extends Partial<ComponentProps<typeof NavigationContainer<AppStackParamList>>> {}

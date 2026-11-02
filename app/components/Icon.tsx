@@ -1,3 +1,4 @@
+import React, { ComponentType } from "react"
 import {
   Image,
   ImageStyle,
@@ -11,6 +12,37 @@ import {
 
 import { useAppTheme } from "@/theme/context"
 
+// --- 1. 图标注册表 (确保 assets/icons 目录下有这些 png 文件) ---
+export const iconRegistry = {
+  back: require("../../assets/icons/back.png"),
+  bell: require("../../assets/icons/bell.png"),
+  caretLeft: require("../../assets/icons/caretLeft.png"),
+  caretRight: require("../../assets/icons/caretRight.png"),
+  components: require("../../assets/icons/components.png"), 
+  settings: require("../../assets/icons/settings.png"),
+  view: require("../../assets/icons/view.png"),
+  hidden: require("../../assets/icons/view.png"),
+  location: require("../../assets/icons/location.png"),
+  check: require("../../assets/icons/check.png"),
+  mood: require("../../assets/icons/mood.png"),
+  sos: require("../../assets/icons/sos.png"),
+  navigation: require("../../assets/icons/navigation.png"),
+  home: require("../../assets/icons/home.png"),
+  chart: require("../../assets/icons/chart.png"),
+  user: require("../../assets/icons/user.png"),
+  radar: require("../../assets/icons/radar.png"),
+  send: require("../../assets/icons/send.png"),
+  write: require("../../assets/icons/write.png"),
+  loading: require("../../assets/icons/loading.png"),
+  profile: require("../../assets/icons/profile.png"),     
+  history: require("../../assets/icons/history.png"),     
+  contact: require("../../assets/icons/contact.png"),   
+  lab:     require("../../assets/icons/lab.png"),         
+  fall:    require("../../assets/icons/fall.png"),       
+  alert:   require("../../assets/icons/alert.png"),      
+  logout:  require("../../assets/icons/logout.png"),    
+}
+
 export type IconTypes = keyof typeof iconRegistry
 
 type BaseIconProps = {
@@ -21,8 +53,9 @@ type BaseIconProps = {
 
   /**
    * An optional tint color for the icon
+   * 🌟 修改点：允许传入 null 以显示原图
    */
-  color?: string
+  color?: string | null
 
   /**
    * An optional size for the icon. If not provided, the icon will be sized to the icon's resolution.
@@ -38,6 +71,11 @@ type BaseIconProps = {
    * Style overrides for the icon container
    */
   containerStyle?: StyleProp<ViewStyle>
+
+  /**
+   * An optional function to be called when the icon is pressed
+   */
+  onPress?: TouchableOpacityProps["onPress"]
 }
 
 type PressableIconProps = Omit<TouchableOpacityProps, "style"> & BaseIconProps
@@ -46,9 +84,6 @@ type IconProps = Omit<ViewProps, "style"> & BaseIconProps
 /**
  * A component to render a registered icon.
  * It is wrapped in a <TouchableOpacity />
- * @see [Documentation and Examples]{@link https://docs.infinite.red/ignite-cli/boilerplate/app/components/Icon/}
- * @param {PressableIconProps} props - The props for the `PressableIcon` component.
- * @returns {JSX.Element} The rendered `PressableIcon` component.
  */
 export function PressableIcon(props: PressableIconProps) {
   const {
@@ -64,13 +99,15 @@ export function PressableIcon(props: PressableIconProps) {
 
   const $imageStyle: StyleProp<ImageStyle> = [
     $imageStyleBase,
-    { tintColor: color ?? theme.colors.text },
+    // 🌟 核心修复：只有当 color 不为 null 时，才应用 tintColor
+    // 如果 color 为 null，这一行会变成 false，React Native 会忽略它，从而显示彩色原图
+    color !== null && { tintColor: color ?? theme.colors.text },
     size !== undefined && { width: size, height: size },
     $imageStyleOverride,
   ]
 
   return (
-    <TouchableOpacity {...pressableProps} style={$containerStyleOverride}>
+    <TouchableOpacity accessibilityRole="image" {...pressableProps} style={$containerStyleOverride}>
       <Image style={$imageStyle} source={iconRegistry[icon]} />
     </TouchableOpacity>
   )
@@ -78,10 +115,7 @@ export function PressableIcon(props: PressableIconProps) {
 
 /**
  * A component to render a registered icon.
- * It is wrapped in a <View />, use `PressableIcon` if you want to react to input
- * @see [Documentation and Examples]{@link https://docs.infinite.red/ignite-cli/boilerplate/app/components/Icon/}
- * @param {IconProps} props - The props for the `Icon` component.
- * @returns {JSX.Element} The rendered `Icon` component.
+ * It is wrapped in a <View />
  */
 export function Icon(props: IconProps) {
   const {
@@ -97,41 +131,17 @@ export function Icon(props: IconProps) {
 
   const $imageStyle: StyleProp<ImageStyle> = [
     $imageStyleBase,
-    { tintColor: color ?? theme.colors.text },
+    // 🌟 核心修复：同上，支持 null 值跳过染色
+    color !== null && { tintColor: color ?? theme.colors.text },
     size !== undefined && { width: size, height: size },
     $imageStyleOverride,
   ]
 
   return (
-    <View {...viewProps} style={$containerStyleOverride}>
+    <View accessibilityRole="image" {...viewProps} style={$containerStyleOverride}>
       <Image style={$imageStyle} source={iconRegistry[icon]} />
     </View>
   )
-}
-
-export const iconRegistry = {
-  back: require("@assets/icons/back.png"),
-  bell: require("@assets/icons/bell.png"),
-  caretLeft: require("@assets/icons/caretLeft.png"),
-  caretRight: require("@assets/icons/caretRight.png"),
-  check: require("@assets/icons/check.png"),
-  clap: require("@assets/icons/demo/clap.png"),
-  community: require("@assets/icons/demo/community.png"),
-  components: require("@assets/icons/demo/components.png"),
-  debug: require("@assets/icons/demo/debug.png"),
-  github: require("@assets/icons/demo/github.png"),
-  heart: require("@assets/icons/demo/heart.png"),
-  hidden: require("@assets/icons/hidden.png"),
-  ladybug: require("@assets/icons/ladybug.png"),
-  lock: require("@assets/icons/lock.png"),
-  menu: require("@assets/icons/menu.png"),
-  more: require("@assets/icons/more.png"),
-  pin: require("@assets/icons/demo/pin.png"),
-  podcast: require("@assets/icons/demo/podcast.png"),
-  settings: require("@assets/icons/settings.png"),
-  slack: require("@assets/icons/demo/slack.png"),
-  view: require("@assets/icons/view.png"),
-  x: require("@assets/icons/x.png"),
 }
 
 const $imageStyleBase: ImageStyle = {

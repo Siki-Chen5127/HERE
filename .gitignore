@@ -74,6 +74,9 @@ bin/Exponent.app
 expo-env.d.ts
 
 ## Secrets
+.env
+.env.*
+!.env.example
 npm-debug.*
 *.jks
 *.p8
@@ -99,3 +102,8 @@ web-build/
 # Dependency Graph Visualizations
 app-dependency-graph.svg
 app-dependency-graph.png
+
+# Build artifacts
+*.apk
+*.aab
+.tmp/

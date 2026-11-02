@@ -1,77 +1,123 @@
-# Welcome to your new ignited app!
+# Here
 
-> The latest and greatest boilerplate for Infinite Red opinions
+Here 是一个面向个人安全与亲友守护场景的移动端 App。项目基于 React Native / Expo 开发，当前形态是一个本地优先的安全守护原型，核心目标是帮助用户记录位置状态、管理紧急联系人、触发求助流程，并为长辈或独居人群提供更简单直接的安全入口。
 
-This is the boilerplate that [Infinite Red](https://infinite.red) uses as a way to test bleeding-edge changes to our React Native stack.
+## 主要功能
 
-- [Quick start documentation](https://github.com/infinitered/ignite/blob/master/docs/boilerplate/Boilerplate.md)
-- [Full documentation](https://github.com/infinitered/ignite/blob/master/docs/README.md)
+- 本地手机号和密码登录/注册
+- 身份选择：为我自己、为我的长辈、我是长辈
+- 首页实时定位和当前位置展示
+- 一键报平安，调起系统短信发送位置
+- 紧急联系人管理
+- SOS 求救倒计时、拨打 110、发送定位短信
+- 行动轨迹记录与轨迹回顾
+- 电子围栏设置与越界告警记录
+- 长辈模式大字体、高对比、一键报平安/呼救
+- 跌倒告警、24 小时失联告警、深夜心跳检测模拟
+- 生命状态周报、安全评分和 AI 安全建议
+- AI 暖心助手聊天
 
-## Getting Started
+## 技术栈
 
-```bash
-npm install --legacy-peer-deps
+- Expo `~54`
+- React Native `0.81`
+- React `19`
+- TypeScript
+- React Navigation
+- Expo SQLite
+- React Native MMKV
+- react-native-amap3d
+- @react-native-community/geolocation
+- DeepSeek Chat API
+- EAS Build
+
+## 本地数据
+
+当前项目使用本地 SQLite 数据库 `assignment.db`。数据库初始化入口位于：
+
+```text
+app/services/database/
+```
+
+主要数据表包括：
+
+- `users`：本地用户、身份和个人档案
+- `EmergencyContact`：紧急联系人
+- `ActivityLog`：定位轨迹和活动记录
+- `AlertLog`：SOS、围栏越界等告警记录
+- `geofences`：电子围栏配置
+- `schema_migrations`：本地数据库迁移记录
+
+## 项目结构
+
+```text
+app/
+  app.tsx                  App 根组件
+  components/              通用 UI 组件
+  context/                 认证等 React Context
+  navigators/              App 导航结构
+  screens/                 业务页面
+  services/
+    database/              SQLite 初始化和 repository 骨架
+    LocationRecorder.ts    定位、轨迹、围栏检测
+  theme/                   主题、颜色、字体、间距
+  utils/                   工具函数
+assets/                    图标和图片资源
+android/                   Expo prebuild 后的 Android 原生工程
+```
+
+## 运行
+
+安装依赖：
+
+```powershell
+npm install
+```
+
+启动开发服务：
+
+```powershell
 npm run start
 ```
 
-To make things work on your local simulator, or on your phone, you need first to [run `eas build`](https://github.com/infinitered/ignite/blob/master/docs/expo/EAS.md). We have many shortcuts on `package.json` to make it easier:
+运行 Android：
 
-```bash
-npm run build:ios:sim # build for ios simulator
-npm run build:ios:device # build for ios device
-npm run build:ios:prod # build for ios device
+```powershell
+npm run android
 ```
 
-### `./assets` directory
+类型检查：
 
-This directory is designed to organize and store various assets, making it easy for you to manage and use them in your application. The assets are further categorized into subdirectories, including `icons` and `images`:
-
-```tree
-assets
-├── icons
-└── images
+```powershell
+npm run compile
 ```
 
-**icons**
-This is where your icon assets will live. These icons can be used for buttons, navigation elements, or any other UI components. The recommended format for icons is PNG, but other formats can be used as well.
+## 构建
 
-Ignite comes with a built-in `Icon` component. You can find detailed usage instructions in the [docs](https://github.com/infinitered/ignite/blob/master/docs/boilerplate/app/components/Icon.md).
+开发 APK：
 
-**images**
-This is where your images will live, such as background images, logos, or any other graphics. You can use various formats such as PNG, JPEG, or GIF for your images.
-
-Another valuable built-in component within Ignite is the `AutoImage` component. You can find detailed usage instructions in the [docs](https://github.com/infinitered/ignite/blob/master/docs/Components-AutoImage.md).
-
-How to use your `icon` or `image` assets:
-
-```typescript
-import { Image } from 'react-native';
-
-const MyComponent = () => {
-  return (
-    <Image source={require('assets/images/my_image.png')} />
-  );
-};
+```powershell
+npm run build:android:device
 ```
 
-## Running Maestro end-to-end tests
+预览 APK：
 
-Follow our [Maestro Setup](https://ignitecookbook.com/docs/recipes/MaestroSetup) recipe.
+```powershell
+npm run build:android:preview
+```
 
-## Next Steps
+生产构建：
 
-### Ignite Cookbook
+```powershell
+npm run build:android:prod
+```
 
-[Ignite Cookbook](https://ignitecookbook.com/) is an easy way for developers to browse and share code snippets (or “recipes”) that actually work.
+## 当前状态
 
-### Upgrade Ignite boilerplate
+项目已经具备完整的安全守护 App 原型能力，但仍处于本地演示阶段。正式发布前需要继续处理：
 
-Read our [Upgrade Guide](https://ignitecookbook.com/docs/recipes/UpdatingIgnite) to learn how to upgrade your Ignite project.
-
-## Community
-
-⭐️ Help us out by [starring on GitHub](https://github.com/infinitered/ignite), filing bug reports in [issues](https://github.com/infinitered/ignite/issues) or [ask questions](https://github.com/infinitered/ignite/discussions).
-
-💬 Join us on [Slack](https://join.slack.com/t/infiniteredcommunity/shared_invite/zt-1f137np4h-zPTq_CbaRFUOR_glUFs2UA) to discuss.
-
-📰 Make our Editor-in-chief happy by [reading the React Native Newsletter](https://reactnativenewsletter.com/).
+- 移除前端硬编码 API Key
+- 接入真实后端认证和数据同步
+- 完善 Android 定位、通知、前台服务和后台任务能力
+- 将页面中的零散 SQLite 操作逐步迁移到 `app/services/database/repositories`
+- 为 SOS、轨迹、围栏、统计等核心业务补充测试

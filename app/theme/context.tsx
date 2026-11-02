@@ -6,8 +6,10 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useState,
+  useRef
 } from "react"
-import { StyleProp, useColorScheme } from "react-native"
+import { StyleProp, useColorScheme, AppState } from "react-native"
 import {
   DarkTheme as NavDarkTheme,
   DefaultTheme as NavDefaultTheme,
@@ -16,7 +18,6 @@ import {
 import { useMMKVString } from "react-native-mmkv"
 
 import { storage } from "@/utils/storage"
-
 import { setImperativeTheming } from "./context.utils"
 import { darkTheme, lightTheme } from "./theme"
 import type {
@@ -42,30 +43,52 @@ export interface ThemeProviderProps {
   initialContext?: ThemeContextModeT
 }
 
-/**
- * The ThemeProvider is the heart and soul of the design token system. It provides a context wrapper
- * for your entire app to consume the design tokens as well as global functionality like the app's theme.
- *
- * To get started, you want to wrap your entire app's JSX hierarchy in `ThemeProvider`
- * and then use the `useAppTheme()` hook to access the theme context.
- *
- * Documentation: https://docs.infinite.red/ignite-cli/boilerplate/app/theme/Theming/
- */
 export const ThemeProvider: FC<PropsWithChildren<ThemeProviderProps>> = ({
   children,
   initialContext,
 }) => {
-  // The operating system theme:
   const systemColorScheme = useColorScheme()
-  // Our saved theme context: can be "light", "dark", or undefined (system theme)
   const [themeScheme, setThemeScheme] = useMMKVString("ignite.themeScheme", storage)
+  
+  // --- 新增：时间计算逻辑 ---
+  const calculateTimeBasedTheme = (): "light" | "dark" => {
+    const hour = new Date().getHours()
+    const isDayTime = hour >= 6 && hour < 18
+    return isDayTime ? "light" : "dark"
+  }
 
-  /**
-   * This function is used to set the theme context and is exported from the useAppTheme() hook.
-   *  - setThemeContextOverride("dark") sets the app theme to dark no matter what the system theme is.
-   *  - setThemeContextOverride("light") sets the app theme to light no matter what the system theme is.
-   *  - setThemeContextOverride(undefined) the app will follow the operating system theme.
-   */
+  const [timeBasedTheme, setTimeBasedTheme] = useState<"light" | "dark">(calculateTimeBasedTheme())
+
+  useEffect(() => {
+    const checkTime = () => {
+      const newTheme = calculateTimeBasedTheme()
+      if (newTheme !== timeBasedTheme) {
+        setTimeBasedTheme(newTheme)
+        // TODO: 这里是一个绝佳的扩展点
+        // 如果是从 light 变成 dark，可以弹出一个温柔的 Toast: "天黑了，注意休息"
+      }
+    }
+
+    // 初始检查
+    checkTime()
+
+    // 设置定时器 (60秒检查一次)
+    const interval = setInterval(checkTime, 60000)
+
+    // 监听 App 状态变化 (从后台回来时立即更新，避免等到下一分钟)
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      if (nextAppState === "active") {
+        checkTime()
+      }
+    })
+
+    return () => {
+      clearInterval(interval)
+      subscription.remove()
+    }
+  }, [timeBasedTheme])
+  // -----------------------
+
   const setThemeContextOverride = useCallback(
     (newTheme: ThemeContextModeT) => {
       setThemeScheme(newTheme)
@@ -74,31 +97,24 @@ export const ThemeProvider: FC<PropsWithChildren<ThemeProviderProps>> = ({
   )
 
   /**
-   * initialContext is the theme context passed in from the app.tsx file and always takes precedence.
-   * themeScheme is the value from MMKV. If undefined, we fall back to the system theme
-   * systemColorScheme is the value from the device. If undefined, we fall back to "light"
+   * 核心优先级逻辑：
+   * 1. initialContext (强制传入)
+   * 2. themeScheme (用户手动设置)
+   * 3. timeBasedTheme (时间自动) -> 这里替换了原本的 systemColorScheme
+   * 4. systemColorScheme (最后兜底)
    */
   const themeContext: ImmutableThemeContextModeT = useMemo(() => {
-    const t = initialContext || themeScheme || (!!systemColorScheme ? systemColorScheme : "light")
-    return t === "dark" ? "dark" : "light"
-  }, [initialContext, themeScheme, systemColorScheme])
+    // 如果用户没有手动设置 (themeScheme 为 undefined)，则使用时间主题
+    const target = initialContext || themeScheme || timeBasedTheme
+    return target === "dark" ? "dark" : "light"
+  }, [initialContext, themeScheme, timeBasedTheme])
 
   const navigationTheme: NavTheme = useMemo(() => {
-    switch (themeContext) {
-      case "dark":
-        return NavDarkTheme
-      default:
-        return NavDefaultTheme
-    }
+    return themeContext === "dark" ? NavDarkTheme : NavDefaultTheme
   }, [themeContext])
 
   const theme: Theme = useMemo(() => {
-    switch (themeContext) {
-      case "dark":
-        return darkTheme
-      default:
-        return lightTheme
-    }
+    return themeContext === "dark" ? darkTheme : lightTheme
   }, [themeContext])
 
   useEffect(() => {
@@ -115,7 +131,6 @@ export const ThemeProvider: FC<PropsWithChildren<ThemeProviderProps>> = ({
           return f
         }
       })
-      // Flatten the array of styles into a single object
       return Object.assign({}, ...stylesArray) as T
     },
     [theme],
@@ -132,10 +147,6 @@ export const ThemeProvider: FC<PropsWithChildren<ThemeProviderProps>> = ({
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
 }
 
-/**
- * This is the primary hook that you will use to access the theme context in your components.
- * Documentation: https://docs.infinite.red/ignite-cli/boilerplate/app/theme/useAppTheme.tsx/
- */
 export const useAppTheme = () => {
   const context = useContext(ThemeContext)
   if (!context) {

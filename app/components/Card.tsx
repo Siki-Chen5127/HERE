@@ -18,23 +18,8 @@ import { Text, TextProps } from "./Text"
 type Presets = "default" | "reversed"
 
 interface CardProps extends TouchableOpacityProps {
-  /**
-   * One of the different types of text presets.
-   */
   preset?: Presets
-  /**
-   * How the content should be aligned vertically. This is especially (but not exclusively) useful
-   * when the card is a fixed height but the content is dynamic.
-   *
-   * `top` (default) - aligns all content to the top.
-   * `center` - aligns all content to the center.
-   * `space-between` - spreads out the content evenly.
-   * `force-footer-bottom` - aligns all content to the top, but forces the footer to the bottom.
-   */
   verticalAlignment?: "top" | "center" | "space-between" | "force-footer-bottom"
-  /**
-   * Custom component added to the left of the card body.
-   */
   LeftComponent?: ReactElement
   /**
    * Custom component added to the right of the card body.

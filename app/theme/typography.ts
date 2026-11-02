@@ -1,6 +1,3 @@
-// TODO: write documentation about fonts and typography along with guides on how to add custom fonts in own
-// markdown file and add links from here
-
 import { Platform } from "react-native"
 import {
   SpaceGrotesk_300Light as spaceGroteskLight,
@@ -44,6 +41,9 @@ const fonts = {
     light: "sans-serif-light",
     normal: "sans-serif",
     medium: "sans-serif-medium",
+    // 补全权重，防止 TS 报错
+    semiBold: "sans-serif-medium", 
+    bold: "sans-serif",            
   },
   monospace: {
     // Android only font.
@@ -52,20 +52,20 @@ const fonts = {
 }
 
 export const typography = {
-  /**
-   * The fonts are available to use, but prefer using the semantic name.
-   */
   fonts,
-  /**
-   * The primary font. Used in most places.
-   */
-  primary: fonts.spaceGrotesk,
-  /**
-   * An alternate font used for perhaps titles and stuff.
-   */
-  secondary: Platform.select({ ios: fonts.helveticaNeue, android: fonts.sansSerif }),
-  /**
-   * Lets get fancy with a monospace font!
-   */
-  code: Platform.select({ ios: fonts.courier, android: fonts.monospace }),
+  // 强制 Android 使用系统默认字体，不使用 Space Grotesk
+  primary: Platform.select({ 
+    ios: fonts.spaceGrotesk, 
+    android: fonts.sansSerif 
+  }) as typeof fonts.spaceGrotesk,
+  
+  secondary: Platform.select({ 
+    ios: fonts.helveticaNeue, 
+    android: fonts.sansSerif 
+  }) as typeof fonts.helveticaNeue,
+  
+  code: Platform.select({ 
+    ios: fonts.courier, 
+    android: fonts.monospace 
+  }) as object,
 }
