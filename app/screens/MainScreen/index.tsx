@@ -1,11 +1,7 @@
 import React, { FC, useEffect, useState, useCallback, useRef } from "react"
-import { View, Alert, StatusBar, Modal, TouchableOpacity, StyleSheet, Platform, Linking } from "react-native"
-//  2. 引入本地 SQLite
+import { View, Alert, Modal, TouchableOpacity, StyleSheet, Platform, Linking } from "react-native"
 import * as SQLite from 'expo-sqlite'
-
 import { useFocusEffect } from "@react-navigation/native"
-
-import { useAppTheme } from "@/theme/context"
 import { Text } from "@/components/Text"
 import { createClientEventId, submitAlert } from "@/services/alertSync"
 import { usersRepository } from "@/services/database/repositories"
@@ -18,9 +14,11 @@ import {
   startRecordingTrajectory,
 } from "@/services/LocationRecorder"
 import { colors as themeColors } from "@/theme/colors" 
-
 import { StandardView } from "./StandardView"
 import { ElderView } from "./ElderView"
+import { homeColors } from "./components/homeAppearance"
+import { useScreenChrome } from "@/utils/useScreenChrome"
+import { useAuth } from "@/context/AuthContext"
 
 const AMAP_WEB_KEY = process.env.EXPO_PUBLIC_AMAP_WEB_KEY ?? ""
 
@@ -28,8 +26,7 @@ const AMAP_WEB_KEY = process.env.EXPO_PUBLIC_AMAP_WEB_KEY ?? ""
 const db = SQLite.openDatabaseSync('assignment.db')
 
 export const MainScreen: FC<any> = ({ navigation }) => {
-  const { theme: { colors } } = useAppTheme()
-  
+  const { currentUser } = useAuth()
   const [user, setUser] = useState<any>(null)
   const cachedLocation = getCachedPosition()
   const [currentLocation, setCurrentLocation] = useState<LocationPoint | null>(cachedLocation)
@@ -43,6 +40,8 @@ export const MainScreen: FC<any> = ({ navigation }) => {
   const addressRequestIdRef = useRef(0)
 
   const isElder = user?.role === 'elder'
+  const canvasColor = isElder ? themeColors.palette.elder.bg : homeColors.background
+  useScreenChrome(canvasColor)
 
   //  4. 获取当前本地用户的辅助函数 (取最后登录的一个用户)
   const getActiveUserId = () => {
@@ -77,8 +76,8 @@ export const MainScreen: FC<any> = ({ navigation }) => {
     useCallback(() => {
       if (locationReadyRef.current) fetchLatestLocation()
       fetchUserData()
-      fetchActivityTimeline() 
-    }, [])
+      fetchActivityTimeline()
+    }, [currentUser?.id, currentUser?.name])
   )
 
   const setupLocationTracking = async () => {
@@ -163,17 +162,34 @@ export const MainScreen: FC<any> = ({ navigation }) => {
 
   const fetchUserData = async () => {
     try {
-      // 7. 从 SQLite 获取当前用户信息
-      const u = usersRepository.getActiveUser()
-      if (u) {
-        setUser({
-          displayName: u.phone || '我',
-          role: u.role || 'self',
-          id: String(u.id),
-          avatarChar: (u.phone || '?').charAt(0).toUpperCase(),
-        })
+      const localUser = usersRepository.getActiveUser()
+
+      if (!localUser) {
+        setUser(null)
+        return
       }
-    } catch (error) { console.error("fetchUserData", error) }
+
+      const savedName = (
+        localUser.realName ||
+        currentUser?.name ||
+        ""
+      ).trim()
+
+      // 旧账号可能把手机号存进名称，避免再次直接展示。
+      const displayName =
+        savedName && savedName !== localUser.phone
+          ? savedName
+          : "同学"
+
+      setUser({
+        displayName,
+        role: localUser.role || "self",
+        id: String(localUser.id),
+        avatarChar: Array.from(displayName)[0] || "同",
+      })
+    } catch (error) {
+      console.error("读取首页用户信息失败", error)
+    }
   }
 
   const sendSmsToContacts = async (messagePrefix: string) => {
@@ -272,8 +288,7 @@ export const MainScreen: FC<any> = ({ navigation }) => {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: isElder ? themeColors.palette.elder.bg : colors.background }}>
-      <StatusBar barStyle={isElder ? "dark-content" : "light-content"} backgroundColor={isElder ? "#F5F5F5" : colors.primary} />
+    <View style={{ flex: 1, backgroundColor: canvasColor }}>
       
       {isElder ? (
         <ElderView 

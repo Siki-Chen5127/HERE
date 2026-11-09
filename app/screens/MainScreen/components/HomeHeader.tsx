@@ -1,111 +1,82 @@
-import React, { useEffect, useRef } from "react"
-import { View, StyleSheet, TouchableOpacity, Animated, Easing, Dimensions } from "react-native"
-import { SafeAreaView } from "react-native-safe-area-context"
+import React from "react"
+import { View, StyleSheet } from "react-native"
 import { Text } from "@/components/Text"
-import { Icon } from "@/components/Icon"
-import { useAppTheme } from "@/theme/context"
-
-const { width } = Dimensions.get("window")
-export const HEADER_HEIGHT = 260
-
-// 呼吸圆圈组件 (内部使用，不导出)
-const BreathingCircle = ({ color, size, top, left, right, bottom, duration, delay }: any) => {
-  const scaleAnim = useRef(new Animated.Value(1)).current
-  const opacityAnim = useRef(new Animated.Value(0.3)).current
-
-  useEffect(() => {
-    const breathe = Animated.loop(
-      Animated.sequence([
-        Animated.parallel([
-          Animated.timing(scaleAnim, { toValue: 1.2, duration: duration, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-          Animated.timing(opacityAnim, { toValue: 0.6, duration: duration, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        ]),
-        Animated.parallel([
-          Animated.timing(scaleAnim, { toValue: 1, duration: duration, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-          Animated.timing(opacityAnim, { toValue: 0.3, duration: duration, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        ]),
-      ])
-    )
-    setTimeout(() => breathe.start(), delay)
-  }, [])
-
-  return (
-    <Animated.View
-      style={{
-        position: "absolute",
-        top, left, right, bottom,
-        width: size, height: size,
-        borderRadius: size / 2,
-        backgroundColor: color,
-        transform: [{ scale: scaleAnim }],
-        opacity: opacityAnim,
-      }}
-    />
-  )
-}
+import { HomeIcon as Icon } from "./HomeIcon"
+import { homeColors as C } from "./homeAppearance"
+import { SoftPressable } from "./SoftPressable"
 
 interface HomeHeaderProps {
-  user: any
+  user: { displayName?: string; avatarChar?: string } | null
   onNotificationPress: () => void
+  onProfilePress?: () => void
 }
 
-export const HomeHeader = ({ user, onNotificationPress }: HomeHeaderProps) => {
-  const { theme: { colors } } = useAppTheme()
-
+export const HomeHeader = ({ user, onProfilePress }: HomeHeaderProps) => {
+  const hour = new Date().getHours()
+  const greeting =
+    hour < 6
+      ? "夜深了"
+      : hour < 11
+        ? "早上好"
+        : hour < 14
+          ? "中午好"
+          : hour < 18
+            ? "下午好"
+            : "晚上好"
   return (
-    <View style={[styles.headerBackground, { backgroundColor: colors.primary }]}>
-      {/* 呼吸氛围层 */}
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <BreathingCircle color="#27ae98ff" size={200} top={-50} left={-50} duration={4000} delay={0} />
-        <BreathingCircle color={colors.tint} size={150} top={20} right={-30} duration={5000} delay={1000} />
-        <BreathingCircle color="#9a98d9ff" size={250} top={80} right={20} duration={4000} delay={1500} />
-      </View>
-
-      <SafeAreaView edges={['top']} style={{ flex: 1 }}>
-        <View style={styles.headerContent}>
-          <View style={styles.userInfo}>
-            <View style={styles.avatar}>
-              <Text text={user?.avatarChar || '?'} style={{ fontSize: 20, color: colors.primary, fontWeight: 'bold' }} />
-            </View>
-            <View>
-              <Text text="实时守护中" style={{ color: 'rgba(255,255,255,0.9)', fontSize: 12, marginBottom: 2 }} />
-              <Text text={user?.displayName || '加载中...'}
-              numberOfLines={1}
-              adjustsFontSizeToFit 
-              style={{ color: 'white', fontSize: 22, fontWeight: 'bold' }} />
-            </View>
-          </View>
+    <View style={styles.container}>
+      <View style={styles.profileRow}>
+        <View style={styles.avatar}>
+          <Text text={user?.avatarChar || "同"} style={styles.avatarText} />
         </View>
-      </SafeAreaView>
+        <View style={styles.profileText}>
+          <Text text={`${user?.displayName || "同学"}，${greeting}`} style={styles.name} />
+        </View>
+        {onProfilePress && (
+          <SoftPressable
+            onPress={onProfilePress}
+            accessibilityRole="button"
+            accessibilityLabel="编辑个人资料"
+          >
+            <View style={styles.profileButton}>
+              <Icon icon="user" size={23} color={C.text} />
+            </View>
+          </SoftPressable>
+        )}
+      </View>
+      <Text text="今天，感觉怎么样？" style={styles.heading} />
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  headerBackground: {
-    height: HEADER_HEIGHT,
-    width: '100%',
-    position: 'absolute',
-    top: 0,
-    borderBottomLeftRadius: 40,
-    borderBottomRightRadius: 40,
-    zIndex: 0,
-    overflow: 'hidden',
-  },
-  headerContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingHorizontal: 24,
-    paddingTop: 20,
-  },
-  userInfo: { flexDirection: 'row', alignItems: 'center' },
+  container: { paddingBottom: 20 },
+  profileRow: { flexDirection: "row", alignItems: "center", marginBottom: 30 },
   avatar: {
-    width: 48, height: 48, borderRadius: 24,
-    backgroundColor: 'white',
-    justifyContent: 'center', alignItems: 'center',
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "#718E71",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.8)",
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 12,
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)'
   },
-  redDot: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4, borderWidth: 1, borderColor: 'white' },
+  avatarText: { fontSize: 20, lineHeight: 28, fontWeight: "500", color: C.white },
+  profileText: { flex: 1 },
+  brand: { fontSize: 10, lineHeight: 16, letterSpacing: 1.1, color: C.secondary, marginBottom: 3 },
+  name: { fontSize: 17, lineHeight: 26, fontWeight: "500", color: C.text },
+  profileButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(255,255,255,0.36)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.7)",
+    marginLeft: 10,
+  },
+  heading: { fontSize: 28, lineHeight: 40, fontWeight: "600", letterSpacing: 0.3, color: C.text ,textAlign: "center",},
 })

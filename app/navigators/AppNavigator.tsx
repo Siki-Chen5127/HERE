@@ -10,6 +10,8 @@ import { MainNavigator } from "./MainNavigator"
 import { useAppTheme } from "@/theme/context"
 import type { AppStackParamList, NavigationProps } from "./navigationTypes"
 import { navigationRef, useBackButtonHandler } from "./navigationUtilities"
+import { ForgotPasswordScreen } from "@/screens/ForgotPasswordScreen"
+import { homeColors } from "@/screens/MainScreen/components/homeAppearance"
 
 const exitRoutes = Config.exitRoutes
 const Stack = createNativeStackNavigator<AppStackParamList>()
@@ -32,7 +34,7 @@ const AppStack = () => {
       {isAuthenticated ? (
         <>
           {userRole ? (
-            <Stack.Screen name="Main" component={MainNavigator} />
+            <Stack.Screen name="Main" component={MainNavigator} options={{ contentStyle: { backgroundColor: homeColors.background } }} />
             
           ) : (
             <Stack.Screen name="PersonaSelect" component={PersonaSelectScreen} />
@@ -42,6 +44,7 @@ const AppStack = () => {
       ) : (
         <>
           <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen}/>
           
         </>
       )}

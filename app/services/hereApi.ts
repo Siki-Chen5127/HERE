@@ -54,6 +54,7 @@ export type AiChatMessage = {
 export type MobileAiResponse = {
   content: string
   model: string
+  reasoning_content?: string
 }
 
 export class HereApiError extends Error {
@@ -103,7 +104,6 @@ type RequestOptions = RequestInit & {
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 15000)
   const headers = new Headers(options.headers)
   headers.set("Accept", "application/json")
 
@@ -114,6 +114,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     headers.set("Authorization", `Bearer ${token}`)
   }
 
+  const isAiChat = path === "/mobile/ai/chat"
+  const timeout = setTimeout(() => controller.abort(), isAiChat ? 150000 : 15000)
   try {
     const response = await fetch(`${Config.HERE_API_URL.replace(/\/+$/, "")}${path}`, {
       ...options,
@@ -144,6 +146,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   } catch (error) {
     if (error instanceof HereApiError) throw error
     if (error instanceof Error && error.name === "AbortError") {
+      if (isAiChat) throw new HereApiError("模型回复超时，请稍后重试或缩短问题")
       throw new HereApiError("连接服务器超时，请检查后端和 USB 端口映射")
     }
     throw new HereApiError("无法连接 HERE 服务器，请检查后端是否启动及 USB 端口映射")

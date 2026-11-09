@@ -1,11 +1,12 @@
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs"
 import { createNativeStackNavigator } from "@react-navigation/native-stack"
 import React from "react"
-import { View } from "react-native" 
+import { Image, StyleSheet, View } from "react-native"
+import { LinearGradient } from "expo-linear-gradient"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 // --- 1. 导入组件与页面 ---
-import { Icon } from "@/components/Icon" 
+import { HomeIcon as Icon } from "@/screens/MainScreen/components/HomeIcon"
 import { MainScreen } from "@/screens"
 import { SettingsScreen } from "@/screens/SettingsScreen"
 import { ContactsScreen } from "@/screens/ContactsScreen"
@@ -19,6 +20,7 @@ import { StatisticsScreen } from "@/screens/StatisticsScreen"
 import { GeofenceScreen } from "@/screens/MainScreen/GeofenceScreen"
 import { FallAlertScreen } from "@/screens/FallAlertScreen"
 import { CriticalAlertScreen } from "@/screens/CriticalAlertScreen"
+import { homeColors } from "@/screens/MainScreen/components/homeAppearance"
 
 
 // 占位页面
@@ -68,18 +70,28 @@ function BottomTabs() {
   const insets = useSafeAreaInsets()
 
   return (
-    <Tab.Navigator 
+    <View style={styles.tabsCanvas}>
+    <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: '#10B981', 
+        sceneStyle: styles.tabsCanvas,
+        tabBarActiveTintColor: homeColors.primary,
         tabBarInactiveTintColor: '#9CA3AF',
         tabBarIcon: ({ color, size }) => {
           const iconName = getTabIcon(route.name, false)
-          return <Icon icon={iconName} size={24} color={null} />
+          return <Icon icon={iconName} size={24} color={color} />
         },
+        tabBarBackground: () => (
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.glassTabBackground]}>
+            <Image source={require("../../assets/images/home-ambient.png")} style={[StyleSheet.absoluteFill, { width: "100%", height: "100%", opacity: 0.4 }]} />
+            <LinearGradient colors={["rgba(255,255,255,0.78)", "rgba(244,247,235,0.72)"]} style={StyleSheet.absoluteFill} />
+          </View>
+        ),
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopWidth: 0, 
+          backgroundColor: "transparent",
+          borderTopWidth: 1,
+          borderTopColor: "rgba(255,255,255,0.9)",
+          overflow: "visible",
           height: 64 + insets.bottom, 
           paddingBottom: insets.bottom + 8,
           paddingTop: 8,
@@ -87,7 +99,7 @@ function BottomTabs() {
           shadowOffset: { width: 0, height: -4 },
           shadowOpacity: 0.05,
           shadowRadius: 8,
-          elevation: 10,
+          elevation: 0,
         },
         tabBarLabelStyle: {
           fontSize: 12,
@@ -111,6 +123,7 @@ function BottomTabs() {
         options={{ tabBarLabel: "我的" }}
       />
     </Tab.Navigator>
+    </View>
   )
 }
 
@@ -118,7 +131,7 @@ export function MainNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {/* 1. 底部 Tab 作为主入口 */}
-      <Stack.Screen name="Tabs" component={BottomTabs} />
+      <Stack.Screen name="Tabs" component={BottomTabs} options={{ contentStyle: styles.tabsCanvas }} />
       
       {/* 2. 业务功能页面 (从 Tabs 跳转出来的二级页面) */}
       <Stack.Screen name="Contacts" component={ContactsScreen} />
@@ -150,3 +163,16 @@ export function MainNavigator() {
     </Stack.Navigator>
   )
 }
+
+const styles = StyleSheet.create({
+  glassTabBackground: {
+    backgroundColor: homeColors.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: "hidden",
+  },
+  tabsCanvas: {
+    backgroundColor: homeColors.background,
+    flex: 1,
+  },
+})

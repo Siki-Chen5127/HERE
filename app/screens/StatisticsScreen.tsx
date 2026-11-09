@@ -1,32 +1,27 @@
-import React, { FC, useEffect, useState, useCallback, useRef } from "react"
+import { FC, useEffect, useState, useCallback, useRef } from "react"
 import {
-  View,
-  StyleSheet,
-  TouchableOpacity,
-  Dimensions,
   ActivityIndicator,
-  ScrollView,
+  Alert,
+  Image,
   RefreshControl,
-  StatusBar,
-  Animated,
-  Easing,
-  Alert
+  ScrollView,
+  StyleSheet,
+  View,
+  useWindowDimensions,
 } from "react-native"
-import { Screen } from "@/components/Screen"
+import { LinearGradient } from "expo-linear-gradient"
+import * as SQLite from "expo-sqlite"
+import Feather from "@expo/vector-icons/Feather"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
+
 import { Text } from "@/components/Text"
-import { Icon } from "@/components/Icon"
-
-
-// 🟢 2. 引入本地 SQLite
-import * as SQLite from 'expo-sqlite'
 import { usersRepository } from "@/services/database/repositories"
 import { mobileApi } from "@/services/hereApi"
+import { useScreenChrome } from "@/utils/useScreenChrome"
 
-import { colors } from "@/theme/colors"
-import { $styles } from "@/theme/styles"
-
-// --- 配置 ---
-const { width: SCREEN_WIDTH } = Dimensions.get('window')
+import { GlassSurface } from "./MainScreen/components/GlassSurface"
+import { homeColors as C } from "./MainScreen/components/homeAppearance"
+import { SoftPressable } from "./MainScreen/components/SoftPressable"
 
 type StatsSnapshot = {
   sosCount: number
@@ -35,152 +30,105 @@ type StatsSnapshot = {
   safetyScore: number
 }
 
-//  主题配色 (科技医疗风)
-const THEME = {
-  bg: "#F0F2F5", 
-  primary: "#10B981", // 安全绿
-  warning: "#F59E0B", // 警告橙
-  danger: "#EF4444",  // 危险红
-  card: "#FFFFFF",
-  textMain: "#1F2937",
-  textSub: "#6B7280",
-  chartBar: "#34D399",
-  scoreRing: "#D1FAE5",
-  gradientTop: "#E0F2FE", // 顶部流光色
+const PALETTE = {
+  bar: "#A0B69B",
+  track: "rgba(247,249,234,0.23)",
+  heroText: "#F7F9EE",
+  heroMuted: "#E1EBD9",
+  unit: "rgba(247,249,238,0.7)",
+  divider: "rgba(65,91,69,0.12)",
+  tag: "rgba(255,255,255,0.48)",
 }
 
-// 🟢 3. 打开数据库连接
-const db = SQLite.openDatabaseSync('assignment.db')
+const db = SQLite.openDatabaseSync("assignment.db")
 
-// --- 辅助函数：获取本周日期标签 ---
 const getDayLabels = () => {
   const days = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
-  const today = new Date().getDay()
-  const labels = []
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date()
-    d.setDate(d.getDate() - i)
-    labels.push(days[d.getDay()])
-  }
-  return labels
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date()
+    date.setDate(date.getDate() - 6 + index)
+    return days[date.getDay()]
+  })
 }
 
-// --- 组件：自定义动态柱状图 ---
-const SimpleBarChart = ({ data }: { data: number[] }) => {
-  const maxVal = Math.max(...data, 1) 
-  const labels = getDayLabels()
+const getDateRange = () => {
+  const end = new Date()
+  const start = new Date(end)
+  start.setDate(start.getDate() - 6)
+  return `${start.getMonth() + 1}.${start.getDate()} — ${end.getMonth() + 1}.${end.getDate()}`
+}
 
+const SimpleBarChart = ({ data, largeText }: { data: number[]; largeText: boolean }) => {
+  const max = Math.max(...data, 1)
+  const labels = getDayLabels()
+  const hasData = data.some((value) => value > 0)
   return (
-    <View style={styles.chartContainer}>
-      <View style={styles.chartArea}>
-        {data.map((value, index) => {
-          const barHeight = (value / maxVal) * 100
-          const isToday = index === 6
-          
-          return (
-            <TouchableOpacity 
-              key={index} 
+    <View>
+      {!hasData && <Text text="这周还没有活动记录" style={styles.chartEmpty} />}
+      <ScrollView
+        horizontal={largeText}
+        scrollEnabled={largeText}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chartContent}
+      >
+        <View style={[styles.chartArea, largeText && styles.chartAreaWide]}>
+          {data.map((value, index) => (
+            <SoftPressable
+              key={index}
               style={styles.chartColumn}
-              activeOpacity={0.6}
-              onPress={() => Alert.alert(labels[index], `活跃时长: ${value.toFixed(1)} 小时`)}
+              accessibilityRole="button"
+              accessibilityLabel={`${index === 6 ? "今天" : labels[index]}，估算活跃时长 ${value.toFixed(1)} 小时`}
+              onPress={() =>
+                Alert.alert(
+                  index === 6 ? "今天" : labels[index],
+                  `估算活跃时长：${value.toFixed(1)} 小时。根据本机轨迹记录计算。`,
+                )
+              }
             >
-              <Text style={styles.chartValue}>{value > 0 ? value.toFixed(1) : ''}</Text>
-              <View style={[
-                styles.chartBar, 
-                { 
-                  height: Math.max(barHeight, 4), 
-                  backgroundColor: isToday ? THEME.primary : THEME.chartBar,
-                  opacity: isToday ? 1 : 0.6
-                }
-              ]} />
-              <Text style={[styles.chartLabel, isToday && { fontWeight: 'bold', color: THEME.primary }]}>
-                {labels[index]}
-              </Text>
-            </TouchableOpacity>
-          )
-        })}
-      </View>
+              <View style={styles.chartCell}>
+                <View style={styles.chartPlot}>
+                  {value > 0 && <Text text={value.toFixed(1)} style={styles.chartValue} />}
+                  <LinearGradient
+                    colors={index === 6 ? ["#7A9D7C", "#376F55"] : ["#BCCCB1", "#91AC8B"]}
+                    style={[
+                      styles.chartBar,
+                      { height: Math.max((value / max) * 94, 4) },
+                      !hasData && styles.emptyBar,
+                    ]}
+                  />
+                </View>
+                <Text
+                  text={index === 6 ? "今天" : labels[index]}
+                  style={[styles.chartLabel, index === 6 && styles.todayLabel]}
+                />
+              </View>
+            </SoftPressable>
+          ))}
+        </View>
+      </ScrollView>
     </View>
   )
 }
 
-// --- 组件：安全评分仪表盘 (带呼吸光环) ---
-const SafetyScoreRing = ({ score, onPress }: { score: number, onPress: () => void }) => {
-  let statusColor = THEME.primary
-  let statusText = "安全状况良好"
-  
-  if (score < 60) {
-    statusColor = THEME.danger
-    statusText = "存在高危风险"
-  } else if (score < 85) {
-    statusColor = THEME.warning
-    statusText = "需注意出行安全"
-  }
+export const StatisticsScreen: FC<any> = () => {
+  const insets = useSafeAreaInsets()
+  const { fontScale } = useWindowDimensions()
+  const largeText = fontScale >= 1.3
+  useScreenChrome(C.background)
 
-  const scaleAnim = useRef(new Animated.Value(1)).current
-  
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(scaleAnim, { toValue: 1.05, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(scaleAnim, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true })
-      ])
-    ).start()
-  }, [])
-
-  return (
-    <TouchableOpacity style={styles.scoreContainer} onPress={onPress} activeOpacity={0.9}>
-      <Animated.View style={[
-        styles.scoreHalo, 
-        { backgroundColor: statusColor, transform: [{ scale: scaleAnim }], opacity: 0.15 } 
-      ]} />
-      
-      <View style={[styles.scoreCircle, { borderColor: statusColor }]}>
-        <Text style={[styles.scoreNum, { color: statusColor }]} text={`${score}`} />
-        <Text style={styles.scoreLabel} text="安全指数" />
-      </View>
-      
-      <View style={styles.scoreBadge}>
-        <Text 
-          style={[styles.statusText, { color: statusColor }]} 
-          text={statusText} 
-          numberOfLines={1} 
-          adjustsFontSizeToFit 
-        />
-      </View>
-    </TouchableOpacity>
-  )
-}
-
-export const StatisticsScreen: FC<any> = ({ navigation }) => {
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
-  
+
   const [aiAnalysis, setAiAnalysis] = useState("")
   const [sosCount, setSosCount] = useState(0)
   const [nightTripCount, setNightTripCount] = useState(0)
-  const [weeklyData, setWeeklyData] = useState<number[]>([0,0,0,0,0,0,0])
+  const [weeklyData, setWeeklyData] = useState<number[]>([0, 0, 0, 0, 0, 0, 0])
   const [safetyScore, setSafetyScore] = useState(100)
   const [totalDistance, setTotalDistance] = useState(0)
 
-  useEffect(() => {
-    loadAllData()
-  }, [])
+  const inFlight = useRef(false)
 
-  const loadAllData = async () => {
-    setLoading(true)
-    const snapshot = await fetchStats()
-    if (snapshot) await fetchAiAnalysis(snapshot)
-    setLoading(false)
-  }
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true)
-    await loadAllData()
-    setRefreshing(false)
-  }, [])
-
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       // 🟢 4. 获取本地当前用户
       const activeUser = usersRepository.getActiveUser()
@@ -189,38 +137,38 @@ export const StatisticsScreen: FC<any> = ({ navigation }) => {
 
       // 🟢 5. 从本地 AlertLog 查最近 7 天的报警次数
       // datetime('now', '-7 days') 是 SQLite 原生语法，完美兼容
-      const alertQuery = db.getFirstSync<{count: number}>(
+      const alertQuery = db.getFirstSync<{ count: number }>(
         "SELECT COUNT(*) as count FROM AlertLog WHERE userId = ? AND timestamp >= datetime('now', '-7 days')",
-        userId
+        userId,
       )
       const alerts = alertQuery ? alertQuery.count : 0
       setSosCount(alerts)
 
       // 🟢 6. 从本地 ActivityLog 查最近 7 天的轨迹时间
-      const logs = db.getAllSync<{timestamp: string}>(
+      const logs = db.getAllSync<{ timestamp: string }>(
         "SELECT timestamp FROM ActivityLog WHERE userId = ? AND timestamp >= datetime('now', '-7 days') ORDER BY timestamp DESC LIMIT 1000",
-        userId
+        userId,
       )
 
       const dailyDuration = [0, 0, 0, 0, 0, 0, 0]
       let nightCount = 0
       const nightSet = new Set<string>()
 
-      logs.forEach(log => {
+      logs.forEach((log) => {
         const date = new Date(log.timestamp)
         if (!date || isNaN(date.getTime())) return
 
         const today = new Date()
-        today.setHours(0,0,0,0)
+        today.setHours(0, 0, 0, 0)
         const logDate = new Date(date)
-        logDate.setHours(0,0,0,0)
+        logDate.setHours(0, 0, 0, 0)
 
         const diffTime = Math.abs(today.getTime() - logDate.getTime())
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
 
         if (diffDays >= 0 && diffDays <= 6) {
           const arrIndex = 6 - diffDays
-          dailyDuration[arrIndex] += (10 / 3600)
+          dailyDuration[arrIndex] += 10 / 3600
         }
 
         const h = date.getHours()
@@ -235,11 +183,11 @@ export const StatisticsScreen: FC<any> = ({ navigation }) => {
 
       setWeeklyData(dailyDuration)
       setNightTripCount(nightCount)
-      
+
       const totalHours = dailyDuration.reduce((a, b) => a + b, 0)
       setTotalDistance(parseFloat((totalHours * 4).toFixed(1)))
 
-      let score = 100 - (alerts * 15) - (nightCount * 2)
+      let score = 100 - alerts * 15 - nightCount * 2
       if (score < 0) score = 0
       setSafetyScore(score)
 
@@ -249,21 +197,20 @@ export const StatisticsScreen: FC<any> = ({ navigation }) => {
         weeklyData: dailyDuration,
         safetyScore: score,
       }
-
     } catch (e) {
       console.error("本地统计数据获取失败", e)
       return null
     }
-  }
+  }, [])
 
-  const fetchAiAnalysis = async (snapshot: StatsSnapshot) => {
+  const fetchAiAnalysis = useCallback(async (snapshot: StatsSnapshot) => {
     try {
       if (
         snapshot.sosCount === 0 &&
         snapshot.nightTripCount === 0 &&
-        snapshot.weeklyData.every(v => v === 0)
+        snapshot.weeklyData.every((v) => v === 0)
       ) {
-        setAiAnalysis("暂无足够数据，建议多使用 App 记录轨迹，让我更好地守护您。")
+        setAiAnalysis("这周还没有足够的活动记录，暂时无法生成小结。")
         return
       }
 
@@ -271,152 +218,311 @@ export const StatisticsScreen: FC<any> = ({ navigation }) => {
         safety_score: snapshot.safetyScore,
         alert_count: snapshot.sosCount,
         night_trip_count: snapshot.nightTripCount,
-        active_hours: snapshot.weeklyData.reduce((a,b) => a + b, 0),
+        active_hours: snapshot.weeklyData.reduce((a, b) => a + b, 0),
       })
       setAiAnalysis(data.content)
-    } catch (e) {
-      setAiAnalysis("安全顾问暂时无法连接，请稍后下拉刷新。")
+    } catch {
+      setAiAnalysis("暂时无法生成小结，稍后下拉刷新再试。")
     }
-  }
+  }, [])
+
+  const loadAllData = useCallback(async () => {
+    if (inFlight.current) return
+    inFlight.current = true
+    setLoading(true)
+    try {
+      const snapshot = await fetchStats()
+      if (snapshot) await fetchAiAnalysis(snapshot)
+    } finally {
+      inFlight.current = false
+      setLoading(false)
+    }
+  }, [fetchStats, fetchAiAnalysis])
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await loadAllData()
+    } finally {
+      setRefreshing(false)
+    }
+  }, [loadAllData])
+
+  useEffect(() => {
+    void loadAllData()
+  }, [loadAllData])
+
+  const hasData = sosCount > 0 || nightTripCount > 0 || weeklyData.some((value) => value > 0)
+  const totalHours = weeklyData.reduce((sum, value) => sum + value, 0)
+  const explainScore = () =>
+    Alert.alert(
+      "参考分说明",
+      "沿用当前记录规则：基础分 100 分，每次告警扣 15 分，每个夜间活动时段扣 2 分，最低为 0 分。此分数不代表心理或健康评估。",
+    )
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor={THEME.gradientTop} />
-      
-      <View style={styles.topDecoration} />
-
-      <View style={styles.header}>
-        <Text style={styles.headerTitle} text="生命状态周报" 
-        numberOfLines={1}
-        adjustsFontSizeToFit/>
-      </View>
-
-      <ScrollView 
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[THEME.primary]} />}
+      <View
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+        importantForAccessibility="no-hide-descendants"
       >
-        <SafetyScoreRing score={safetyScore} onPress={() => Alert.alert("安全指数说明", "基础分100分。每次报警扣15分，每次夜间高危时段出行扣2分。")} />
-
-        <TouchableOpacity style={styles.aiCard} activeOpacity={0.9} onPress={() => Alert.alert("AI 顾问", "这是 DeepSeek 模型根据您的实际数据生成的个性化建议。")}>
-          <View style={$styles.row}>
-            <View style={styles.aiIconBox}>
-              <Text style={{ fontSize: 18 }}>🤖</Text>
+        <Image
+          source={require("../../assets/images/home-ambient.png")}
+          resizeMode="cover"
+          style={styles.background}
+        />
+        <LinearGradient
+          colors={["rgba(248,247,233,0.15)", "rgba(242,245,232,0.76)"]}
+          style={StyleSheet.absoluteFill}
+        />
+      </View>
+      <ScrollView
+        testID="weekly-report-scroll"
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 18 }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={C.primary}
+            colors={[C.primary]}
+          />
+        }
+      >
+        <View style={styles.header}>
+          <Text text="生命状态周报" style={styles.headerTitle} />
+          <View style={styles.headerDetails}>
+            <Text text="回顾过去 7 天的活动" style={styles.subtitle} />
+            <View style={styles.dateTag}>
+              <Feather name="calendar" size={12} color={C.secondary} />
+              <Text text={getDateRange()} style={styles.dateText} />
             </View>
-            <Text style={styles.cardTitle} text="安全顾问分析"
-             numberOfLines={1}        
-            adjustsFontSizeToFit />
           </View>
-          <View style={styles.aiBubble}>
-            <Text style={styles.aiText} text={aiAnalysis || "正在分析您的生命安全状态..."} />
-          </View>
-        </TouchableOpacity>
-
-        <View style={styles.gridContainer}>
-          <TouchableOpacity 
-            style={[styles.statItem, { borderLeftColor: THEME.danger, borderLeftWidth: 4 }]}
-            onPress={() => Alert.alert("告警触发", "包含 SOS 呼救和跌倒检测触发次数")}
-          >
-            <Text style={styles.statLabel} text="告警触发" />
-            <View style={$styles.row}>
-                <Text style={[styles.statValue, { color: THEME.danger }]} text={`${sosCount}`} />
-                <Text style={styles.statUnit} text="次" />
-            </View>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.statItem, { borderLeftColor: THEME.warning, borderLeftWidth: 4 }]}
-            onPress={() => Alert.alert("夜间出行", "统计 21:00 至 05:00 之间的活动记录")}
-          >
-            <Text style={styles.statLabel} text="夜间出行" />
-            <View style={$styles.row}>
-                <Text style={[styles.statValue, { color: THEME.warning }]} text={`${nightTripCount}`} />
-                <Text style={styles.statUnit} text="时段" />
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.statItem, { borderLeftColor: THEME.primary, borderLeftWidth: 4 }]}
-            onPress={() => Alert.alert("活跃里程", "根据活跃时长估算的近似移动距离")}
-          >
-            <Text style={styles.statLabel} text="活跃里程" />
-            <View style={$styles.row}>
-                <Text style={[styles.statValue, { color: THEME.primary }]} text={`${totalDistance}`} />
-                <Text style={styles.statUnit} text="km" />
-            </View>
-          </TouchableOpacity>
         </View>
 
-        <View style={styles.chartCard}>
-          <View style={$styles.rowBetween}>
-             <Text style={styles.cardTitle} text="近7日活跃趋势" />
-             <Text style={{ fontSize: 10, color: THEME.textSub }} text="单位: 小时" />
-          </View>
-          <SimpleBarChart data={weeklyData} />
+        <SoftPressable
+          testID="weekly-score"
+          onPress={explainScore}
+          accessibilityRole="button"
+          accessibilityLabel="查看记录参考分的计算说明"
+        >
+          <GlassSurface green contentStyle={styles.summary}>
+            <View style={styles.summaryHeading}>
+              <Text text="这一周的记录" style={styles.heroEyebrow} />
+              <Feather name="info" size={18} color={PALETTE.heroMuted} />
+            </View>
+            <View style={styles.scoreLine}>
+              <Text text={hasData ? String(safetyScore) : "—"} style={styles.scoreNumber} />
+              <Text text="记录参考分" style={styles.scoreUnit} />
+            </View>
+            {hasData ? (
+              <>
+                <View style={styles.scoreTrack}>
+                  <View style={[styles.scoreFill, { width: `${safetyScore}%` }]} />
+                </View>
+                <Text
+                  text={`近 7 天估算活跃 ${totalHours.toFixed(1)} 小时`}
+                  style={styles.heroDescription}
+                />
+              </>
+            ) : (
+              <Text
+                text={loading ? "正在整理本机记录…" : "还没有足够记录，先从今天开始。"}
+                style={styles.heroDescription}
+              />
+            )}
+            <Text text="仅供回顾，不代表心理或健康评估" style={styles.heroFootnote} />
+          </GlassSurface>
+        </SoftPressable>
+
+        <View style={[styles.metrics, largeText && styles.metricsStack]}>
+          {[
+            {
+              title: "告警记录",
+              value: String(sosCount),
+              unit: "次",
+              icon: "bell" as const,
+              detail: "统计近 7 天本机记录的告警次数。",
+            },
+            {
+              title: "夜间活动",
+              value: String(nightTripCount),
+              unit: "时段",
+              icon: "moon" as const,
+              detail:
+                "统计 21:00 至次日 05:00 的活动记录，同一小时内合并为一个时段，不等于出行次数。",
+            },
+            {
+              title: "估算里程",
+              value: totalDistance.toFixed(1),
+              unit: "km",
+              icon: "map-pin" as const,
+              detail: "由估算活跃时长乘以每小时 4 公里计算，并非 GPS 实测里程。",
+            },
+          ].map((item) => (
+            <SoftPressable
+              key={item.title}
+              style={styles.metricWrapper}
+              onPress={() => Alert.alert(item.title, item.detail)}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.title} ${item.value} ${item.unit}，点击查看说明`}
+            >
+              <GlassSurface contentStyle={styles.metricCard}>
+                <Feather name={item.icon} size={18} color={C.primary} />
+                <Text text={item.title} style={styles.metricLabel} />
+                <View style={styles.metricValueRow}>
+                  <Text text={item.value} style={styles.metricValue} />
+                  <Text text={item.unit} style={styles.metricUnit} />
+                </View>
+              </GlassSurface>
+            </SoftPressable>
+          ))}
         </View>
 
-        <View style={{ height: 40 }} />
+        <GlassSurface style={styles.section} contentStyle={styles.sectionContent}>
+          <View style={styles.sectionHeading}>
+            <Text text="近 7 日活跃趋势" style={styles.cardTitle} />
+            <Feather name="bar-chart-2" size={19} color={C.primary} />
+          </View>
+          <Text text="估算活跃时长 · 小时" style={styles.sectionHint} />
+          <SimpleBarChart data={weeklyData} largeText={largeText} />
+          <Text
+            text="根据本机轨迹记录估算，点击柱状图查看当天数据。"
+            style={styles.chartFootnote}
+          />
+        </GlassSurface>
+
+        <GlassSurface contentStyle={styles.sectionContent}>
+          <View style={styles.sectionHeading}>
+            <View style={styles.analysisHeading}>
+              <Feather name="message-circle" size={19} color={C.primary} />
+              <Text text="本周小结" style={styles.cardTitle} />
+            </View>
+            <View style={styles.aiTag}>
+              <Text text="AI" style={styles.aiTagText} />
+            </View>
+          </View>
+          <Text text="基于以上活动记录生成" style={styles.sectionHint} />
+          {loading ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator size="small" color={C.primary} />
+              <Text text="正在整理小结…" style={styles.loadingText} />
+            </View>
+          ) : (
+            <Text
+              text={aiAnalysis || "暂无小结，下拉可以刷新。"}
+              style={styles.analysisText}
+              selectable
+            />
+          )}
+        </GlassSurface>
+        <Text text="数据来自当前账号在本机的记录 · 下拉刷新" style={styles.footer} />
       </ScrollView>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: THEME.bg },
-  
-  topDecoration: {
-    position: 'absolute', top: -100, left: -50, width: SCREEN_WIDTH + 100, height: 300,
-    backgroundColor: THEME.gradientTop, borderRadius: 150, opacity: 0.6, transform: [{ scaleX: 1.5 }],
+  aiTag: {
+    backgroundColor: PALETTE.tag,
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
   },
-
-  header: { paddingHorizontal: 100, paddingTop: 40, paddingBottom: 30 },
-  headerTitle: { fontSize: 28, fontWeight: "900", color: THEME.textMain },
-  content: { paddingHorizontal: 20 },
-
-  scoreContainer: { alignItems: 'center', marginVertical: 24, justifyContent: 'center' },
-  scoreHalo: { position: 'absolute', width: 180, height: 180, borderRadius: 90 },
-  scoreCircle: {
-    width: 140, height: 140, borderRadius: 70, borderWidth: 8, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: 'white', elevation: 4, shadowColor: THEME.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1,
+  aiTagText: { color: C.primary, fontSize: 10, fontWeight: "600", lineHeight: 16 },
+  analysisHeading: { alignItems: "center", flexDirection: "row", gap: 8 },
+  analysisText: { color: C.text, fontSize: 14, lineHeight: 25, marginTop: 16 },
+  background: { height: "100%", opacity: 0.8, width: "100%" },
+  cardTitle: { color: C.text, flexShrink: 1, fontSize: 16, fontWeight: "600", lineHeight: 25 },
+  chartArea: { alignItems: "flex-end", flex: 1, flexDirection: "row", gap: 2 },
+  chartAreaWide: { minWidth: 460 },
+  chartBar: { borderRadius: 8, marginTop: 5, overflow: "hidden", width: 15 },
+  chartCell: { alignItems: "center", paddingTop: 10 },
+  chartColumn: { flex: 1 },
+  chartContent: { flexGrow: 1 },
+  chartEmpty: {
+    color: C.secondary,
+    fontSize: 12,
+    lineHeight: 20,
+    marginTop: 18,
+    textAlign: "center",
   },
-  scoreNum: { fontSize: 30, fontWeight: 'bold', includeFontPadding: false },
-  scoreLabel: { fontSize: 12, color: THEME.textSub },
-  scoreBadge: {
-    marginTop: -16, backgroundColor: 'white', paddingHorizontal: 16, paddingVertical: 6,
-    borderRadius: 20, elevation: 3, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1,
-    minWidth: 120, alignItems: 'center'
+  chartFootnote: { color: C.secondary, fontSize: 11, lineHeight: 18, marginTop: 16 },
+  chartLabel: { color: C.secondary, fontSize: 11, lineHeight: 18, marginTop: 10 },
+  chartPlot: { alignItems: "center", justifyContent: "flex-end", minHeight: 132 },
+  chartValue: { color: C.secondary, fontSize: 10, lineHeight: 17 },
+  container: { backgroundColor: C.background, flex: 1 },
+  content: { paddingBottom: 28, paddingHorizontal: 22 },
+  dateTag: {
+    alignItems: "center",
+    backgroundColor: PALETTE.tag,
+    borderRadius: 10,
+    flexDirection: "row",
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
-  statusText: { fontSize: 14, fontWeight: 'bold' },
-
-  aiCard: {
-    backgroundColor: THEME.card, borderRadius: 16, padding: 16, marginBottom: 16, elevation: 2,
-    shadowColor: THEME.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05,
+  dateText: { color: C.secondary, fontSize: 11, lineHeight: 18 },
+  emptyBar: { opacity: 0.35 },
+  footer: { color: C.secondary, fontSize: 11, lineHeight: 19, marginTop: 20, textAlign: "center" },
+  header: { marginBottom: 22 },
+  headerDetails: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    justifyContent: "space-between",
+    marginTop: 7,
   },
-  aiIconBox: {
-    width: 32, height: 32, borderRadius: 16, backgroundColor: '#E0E7FF',
-    justifyContent: 'center', alignItems: 'center', marginRight: 10,
+  headerTitle: { color: C.text, fontSize: 28, fontWeight: "600", lineHeight: 40 },
+  heroDescription: { color: PALETTE.heroMuted, fontSize: 14, lineHeight: 23, marginTop: 15 },
+  heroEyebrow: { color: PALETTE.heroMuted, fontSize: 13, lineHeight: 21 },
+  heroFootnote: { color: PALETTE.heroMuted, fontSize: 10, lineHeight: 18, marginTop: 8 },
+  loadingRow: { alignItems: "center", flexDirection: "row", gap: 9, paddingVertical: 24 },
+  loadingText: { color: C.secondary, flex: 1, fontSize: 13, lineHeight: 22 },
+  metricCard: { paddingHorizontal: 12, paddingVertical: 16 },
+  metricLabel: { color: C.secondary, fontSize: 11, lineHeight: 18, marginTop: 10 },
+  metricUnit: { color: C.secondary, fontSize: 10, lineHeight: 18, marginBottom: 2 },
+  metricValue: { color: C.text, fontSize: 23, fontWeight: "500", lineHeight: 33 },
+  metricValueRow: {
+    alignItems: "baseline",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 3,
+    marginTop: 4,
   },
-  aiBubble: { marginTop: 12, backgroundColor: '#F3F4F6', padding: 12, borderRadius: 12, borderTopLeftRadius: 2 },
-  aiText: { fontSize: 14, lineHeight: 22, color: THEME.textMain },
-
-  gridContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16, gap: 10 },
-  statItem: {
-    flex: 1, backgroundColor: THEME.card, padding: 12, borderRadius: 12, elevation: 1,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05,
+  metricWrapper: { flex: 1 },
+  metrics: { flexDirection: "row", gap: 10, marginVertical: 18 },
+  metricsStack: { flexDirection: "column" },
+  scoreFill: { backgroundColor: PALETTE.heroMuted, borderRadius: 2, height: 4 },
+  scoreLine: {
+    alignItems: "baseline",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 10,
   },
-  statLabel: { fontSize: 12, color: THEME.textSub, marginBottom: 4 },
-  statValue: { fontSize: 20, fontWeight: 'bold' },
-  statUnit: { fontSize: 10, color: THEME.textSub, marginLeft: 2, marginTop: 6 },
-
-  chartCard: {
-    backgroundColor: THEME.card, borderRadius: 16, padding: 20, elevation: 2, marginBottom: 20,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05,
+  scoreNumber: { color: PALETTE.heroText, fontSize: 48, fontWeight: "500", lineHeight: 62 },
+  scoreTrack: {
+    backgroundColor: PALETTE.track,
+    borderRadius: 2,
+    height: 4,
+    marginTop: 12,
+    overflow: "hidden",
   },
-  cardTitle: { fontSize: 16, fontWeight: 'bold', color: THEME.textMain },
-  chartContainer: { marginTop: 20, height: 150 },
-  chartArea: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-  chartColumn: { alignItems: 'center', flex: 1 },
-  chartValue: { fontSize: 10, color: THEME.textSub, marginBottom: 4 },
-  chartBar: { width: 12, borderRadius: 6 },
-  chartLabel: { fontSize: 10, color: THEME.textSub, marginTop: 8 },
+  scoreUnit: { color: PALETTE.heroMuted, fontSize: 13, lineHeight: 22 },
+  section: { marginBottom: 18 },
+  sectionContent: { padding: 18 },
+  sectionHeading: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "space-between",
+  },
+  sectionHint: { color: C.secondary, fontSize: 11, lineHeight: 18, marginTop: 4 },
+  subtitle: { color: C.secondary, fontSize: 13, lineHeight: 21 },
+  summary: { padding: 22 },
+  summaryHeading: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  todayLabel: { color: C.primary, fontWeight: "600" },
 })

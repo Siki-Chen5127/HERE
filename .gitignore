@@ -107,3 +107,35 @@ app-dependency-graph.png
 *.apk
 *.aab
 .tmp/
+
+# 环境配置与密钥
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+
+# 依赖、缓存与构建产物
+node_modules/
+.venv/
+__pycache__/
+.pytest_cache/
+.expo/
+dist/
+build/
+*.apk
+*.aab
+*.log
+
+# 本地业务数据
+*.db
+*.db-*
+*.sqlite*
+uploads/
+
+# 开发记录与临时交付物
+测试.txt
+report_work/
+deliverables/
+output/
+outputs/

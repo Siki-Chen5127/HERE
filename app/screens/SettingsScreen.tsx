@@ -1,34 +1,54 @@
-import React, { FC, useEffect, useState } from "react"
-import {
-  View,
-  StyleSheet,
-  ScrollView,
-  Alert,
-  TouchableOpacity,
-  StatusBar,
-  Switch,
-} from "react-native"
+import { ComponentProps, FC, useCallback, useState } from "react"
+import { View, StyleSheet, ScrollView, Alert, TouchableOpacity, Switch, Image } from "react-native"
+import { LinearGradient } from "expo-linear-gradient"
+import Feather from "@expo/vector-icons/Feather"
+import { useFocusEffect } from "@react-navigation/native"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 
-import { useAuth } from "@/context/AuthContext"
 import { Text } from "@/components/Text"
-import { Icon, IconTypes } from "@/components/Icon" 
-import { colors } from "@/theme/colors"
-import { $styles } from "@/theme/styles" 
-import { spacing } from "@/theme/spacing"
+import { useAuth } from "@/context/AuthContext"
 import { usersRepository } from "@/services/database/repositories"
+import { spacing } from "@/theme/spacing"
+import { $styles } from "@/theme/styles"
+import { useScreenChrome } from "@/utils/useScreenChrome"
+
+import { homeColors as C } from "./MainScreen/components/homeAppearance"
 
 // 1. 页面配置
 
-// 深色主题配色
+// Match the home screen's light frosted surface without changing the global theme.
 const THEME = {
-  bg: colors.palette.deepSpace,           // #f0f2f7ff
-  cardBg: "rgba(233, 210, 210, 0.08)",    // 玻璃拟态深色底
-  cardBorder: "rgba(255, 255, 255, 0.1)", // 微光边框
-  textMain: "#FFFFFF",
-  textSub: "rgba(255, 255, 255, 0.6)",
-  divider: "rgba(255, 255, 255, 0.08)",
+  bg: C.background,
+  cardBg: "rgba(255,255,255,0.46)",
+  cardBorder: "rgba(255,255,255,0.88)",
+  textMain: C.text,
+  textSub: C.secondary,
+  divider: C.line,
+  avatarBg: "#718E71",
+  tagBg: "rgba(110,145,107,0.1)",
+  track: "#D4DECF",
+  white: "#FFFFFF",
+  demoRed: "rgba(167,57,57,0.06)",
+  demoRedBorder: "rgba(167,57,57,0.16)",
+  demoAmber: "rgba(142,102,46,0.06)",
+  demoAmberBorder: "rgba(142,102,46,0.16)",
+  amber: "#85622F",
 }
 
+const PROFILE_ICONS = {
+  profile: "user",
+  history: "map",
+  contact: "users",
+  lab: "moon",
+  fall: "activity",
+  alert: "alert-triangle",
+  logout: "log-out",
+  caretRight: "chevron-right",
+} as const satisfies Record<string, ComponentProps<typeof Feather>["name"]>
+type IconTypes = keyof typeof PROFILE_ICONS
+const Icon = ({ icon, size = 24 }: { icon: IconTypes; size?: number; color?: string | null }) => (
+  <Feather name={PROFILE_ICONS[icon]} size={size} color={C.primary} accessible={false} />
+)
 
 /**
  * 🔹 用户头部卡片
@@ -38,27 +58,22 @@ const UserHeader = ({ user }: { user: any }) => {
     <View style={[styles.glassCard, $styles.row]}>
       {/* 头像 */}
       <View style={styles.avatarBox}>
-         <Text style={styles.avatarText} text={user?.avatarChar || '?'} />
+        <Text style={styles.avatarText} text={user?.avatarChar || "?"} />
       </View>
-      
+
       {/* 信息 */}
-      <View style={{ flex: 1 }}>
-        <Text 
-          style={styles.userName} 
-          text={user?.displayName || '未登录'} 
-          numberOfLines={1} 
-        />
+      <View style={styles.userInfo}>
+        <Text style={styles.userName} text={user?.displayName || "未登录"} numberOfLines={2} />
         <View style={styles.userTag}>
-          <Text style={styles.userTagText} text={user?.mobile || '暂无手机号'} />
+          <Text style={styles.userTagText} text={user?.mobile || "暂无手机号"} />
         </View>
       </View>
     </View>
   )
 }
 
-
 interface MenuRowProps {
-  icon: IconTypes 
+  icon: IconTypes
   label: string
   onPress: () => void
   isLast?: boolean
@@ -67,53 +82,60 @@ interface MenuRowProps {
 
 const MenuRow = ({ icon, label, onPress, isLast, rightElement }: MenuRowProps) => {
   return (
-    <TouchableOpacity 
-      style={[styles.menuRow, $styles.rowBetween, isLast && { borderBottomWidth: 0 }]} 
+    <TouchableOpacity
+      style={[styles.menuRow, $styles.rowBetween, isLast && styles.lastRow]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <View style={$styles.row}>
-        <View style={{ marginRight: 12 }}>
+      <View style={styles.menuLeft}>
+        <View style={styles.iconMargin}>
           <Icon icon={icon} size={24} color={null} />
         </View>
         <Text style={styles.menuLabel} text={label} />
       </View>
-      
-      <View>
-        {rightElement || <Icon icon="caretRight" size={20} color={null} />}
-      </View>
+
+      <View>{rightElement || <Icon icon="caretRight" size={20} color={null} />}</View>
     </TouchableOpacity>
   )
 }
 
 export const SettingsScreen: FC<any> = ({ navigation }) => {
-  const { logout } = useAuth()
+  const { logout, currentUser: authUser } = useAuth()
   const [user, setUser] = useState<any>(null)
   const [isRescueMode, setIsRescueMode] = useState(false)
 
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', fetchUserData)
-    return unsubscribe
-  }, [navigation])
+  const insets = useSafeAreaInsets()
+  useScreenChrome(THEME.bg)
 
-  const fetchUserData = () => {
-    try {
-      // 🟢 4. 从本地 SQLite 获取当前用户信息
-      const currentUser = usersRepository.getActiveUser()
-      if (currentUser) {
-        const realName = currentUser.realName
-        const mobile = currentUser.phone
-
-        setUser({
-          displayName: realName || mobile || '用户',
-          mobile: mobile || '暂无手机号',
-          avatarChar: (realName || mobile || '?').charAt(0).toUpperCase(),
-        })
+  useFocusEffect(
+    useCallback(() => {
+      if (!authUser?.id) {
+        setUser(null)
+        return
       }
-    } catch (error) { 
-      console.error("读取本地用户信息失败", error) 
-    }
-  }
+      try {
+        // 🟢 4. 从本地 SQLite 获取当前用户信息
+        const currentUser = usersRepository.getActiveUser()
+        if (currentUser) {
+          const candidate = (currentUser.realName || authUser?.name || "").trim()
+          const mobile = currentUser.phone
+          const displayName = candidate && candidate !== mobile ? candidate : "同学"
+
+          setUser({
+            displayName,
+            mobile: /^\d{11}$/.test(mobile)
+              ? `${mobile.slice(0, 3)}****${mobile.slice(-4)}`
+              : mobile
+                ? "已绑定手机号"
+                : "暂无手机号",
+            avatarChar: Array.from(displayName)[0] || "同",
+          })
+        } else setUser(null)
+      } catch (error) {
+        console.error("读取本地用户信息失败", error)
+      }
+    }, [authUser?.id, authUser?.name]),
+  )
 
   const handleLogout = () => {
     Alert.alert("退出登录", "确定要离开 HERE 吗？", [
@@ -124,44 +146,54 @@ export const SettingsScreen: FC<any> = ({ navigation }) => {
   }
 
   const navigateTo = (screen: string) => {
-    try { navigation.navigate(screen) } catch (e) { console.warn(e) }
+    try {
+      navigation.navigate(screen)
+    } catch (e) {
+      console.warn(e)
+    }
   }
 
   return (
-    <View style={[$styles.container, { backgroundColor: THEME.bg, paddingHorizontal: 20 }]}>
-      <StatusBar barStyle="light-content" backgroundColor={THEME.bg} />
-      
-      <View style={{ paddingTop: 15, marginBottom: 15 }}>
-        <Text style={styles.headerTitle} text="我的"  />
+    <View style={styles.screen}>
+      <View
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+        importantForAccessibility="no-hide-descendants"
+      >
+        <Image
+          source={require("../../assets/images/home-ambient.png")}
+          resizeMode="cover"
+          style={styles.backdrop}
+        />
+        <LinearGradient
+          colors={["rgba(248,247,233,0.18)", "rgba(242,245,232,0.7)"]}
+          style={StyleSheet.absoluteFill}
+        />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
-        
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 18 }]}
+      >
+        <Text style={styles.headerTitle} text="我的" />
+
         {/* 1. 用户信息 */}
         <UserHeader user={user} />
 
         {/* 2. 常用功能 */}
-        <View style={styles.glassCard}>
-          <MenuRow 
-            icon="profile" 
-            label="个人档案" 
-            onPress={() => navigateTo('ProfileEdit')} 
-          />
-          <MenuRow 
-            icon="history" 
-            label="历史轨迹记录" 
-            onPress={() => navigateTo('Trajectory')} 
-          />
-          <MenuRow 
-            icon="contact" 
-            label="紧急联系人" 
-            isLast 
-            onPress={() => navigateTo('Contacts')} 
+        <View style={[styles.glassCard, styles.commonMenu]}>
+          <MenuRow icon="profile" label="个人档案" onPress={() => navigateTo("ProfileEdit")} />
+          <MenuRow icon="history" label="历史轨迹记录" onPress={() => navigateTo("Trajectory")} />
+          <MenuRow
+            icon="contact"
+            label="紧急联系人"
+            isLast
+            onPress={() => navigateTo("Contacts")}
           />
         </View>
 
         {/* 3. 实验室 */}
-        <View style={{ marginTop: 24 }}>
+        <View style={styles.sectionGroup}>
           <Text style={styles.sectionTitle} text="实验室" />
           <View style={styles.glassCard}>
             <MenuRow
@@ -174,54 +206,63 @@ export const SettingsScreen: FC<any> = ({ navigation }) => {
                   value={isRescueMode}
                   onValueChange={(val) => {
                     setIsRescueMode(val)
-                    if(val) Alert.alert("🛡️", "深夜加班检测已开启")
+                    if (val)
+                      Alert.alert("演示模式", "已打开提醒演示入口，可点击下方按钮查看提醒页面。")
                   }}
-                  trackColor={{ false: "#4B5563", true: "#8B5CF6" }}
-                  thumbColor={"#FFFFFF"}
+                  accessibilityLabel="深夜加班救援演示"
+                  trackColor={{ false: THEME.track, true: C.primary }}
+                  thumbColor={THEME.white}
                 />
               }
             />
             {isRescueMode && (
-               <TouchableOpacity onPress={() => navigateTo('RescueCheck')} style={styles.testBtn}>
-                 <Text text="⚡ 立即测试弹窗" style={{ color: "#A78BFA", fontWeight: "bold" }} />
-               </TouchableOpacity>
+              <TouchableOpacity onPress={() => navigateTo("RescueCheck")} style={styles.testBtn}>
+                <Text text="查看提醒演示" style={styles.testText} />
+              </TouchableOpacity>
             )}
           </View>
         </View>
 
         {/* 4. 功能演示 (Grid) */}
-        <View style={{ marginTop: 24 }}>
+        <View style={styles.sectionGroup}>
           <Text style={styles.sectionTitle} text="功能演示" />
           <View style={$styles.row}>
             {/* 跌倒演示 */}
-            <TouchableOpacity 
-              style={[styles.gridBtn, { marginRight: 12, borderColor: 'rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.1)' }]} 
+            <TouchableOpacity
+              style={[styles.gridBtn, styles.fallDemo]}
               onPress={() => navigateTo("FallAlert")}
             >
               <Icon icon="fall" size={32} color={null} />
-              <Text text="模拟跌倒" style={{ color: "#FCA5A5", fontWeight: "bold", marginTop: 8 }} />
+              <Text text="模拟跌倒" style={styles.fallText} />
             </TouchableOpacity>
 
             {/* 失联演示 */}
-            <TouchableOpacity 
-              style={[styles.gridBtn, { borderColor: 'rgba(245,158,11,0.3)', backgroundColor: 'rgba(245,158,11,0.1)' }]} 
+            <TouchableOpacity
+              style={[styles.gridBtn, styles.absenceDemo]}
               onPress={() => navigateTo("CriticalAlert")}
             >
               <Icon icon="alert" size={32} color={null} />
-              <Text text="模拟失联" style={{ color: "#FDBA74", fontWeight: "bold", marginTop: 8 }}
-              numberOfLines={1}
-              adjustsFontSizeToFit  />
+              <Text
+                text="模拟失联"
+                style={styles.absenceText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              />
             </TouchableOpacity>
           </View>
         </View>
 
         {/* 5. 退出 */}
-        <TouchableOpacity style={{ alignSelf: 'center', marginTop: 40, marginBottom: 80, flexDirection: 'row', alignItems: 'center', opacity: 0.8 }} onPress={handleLogout}>
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={handleLogout}
+          accessibilityRole="button"
+          accessibilityLabel="退出登录"
+        >
           <Icon icon="logout" size={25} color={null} />
-          <View style={{ width: 6 }} />
-          <Text style={{ color: THEME.textMain, fontSize: 14 }} text="退出登录" />
+          <View style={styles.logoutGap} />
+          <Text style={styles.logoutText} text="退出登录" />
         </TouchableOpacity>
-
       </ScrollView>
     </View>
   )
@@ -230,96 +271,122 @@ export const SettingsScreen: FC<any> = ({ navigation }) => {
 // 4. 样式定义
 
 const styles = StyleSheet.create({
-  // 文字
-  headerTitle: { 
-    fontSize: 28, 
-    fontWeight: "bold", 
-    color: THEME.textMain,
-    paddingHorizontal: 15,
-    paddingTop: 5,
-    paddingBottom: 15,
-    
+  absenceDemo: { backgroundColor: THEME.demoAmber, borderColor: THEME.demoAmberBorder },
+  absenceText: {
+    color: THEME.amber,
+    fontSize: 14,
+    fontWeight: "500",
+    lineHeight: 22,
+    marginTop: 8,
   },
-  sectionTitle: { 
-    fontSize: 12, 
-    color: THEME.textSub, 
-    marginBottom: 8, 
-    marginLeft: 4, 
-    fontWeight: "bold" 
+  avatarBox: {
+    alignItems: "center",
+    backgroundColor: THEME.avatarBg,
+    borderColor: THEME.cardBorder,
+    borderRadius: 30,
+    borderWidth: 2,
+    height: 60,
+    justifyContent: "center",
+    marginRight: 16,
+    width: 60,
   },
-  userName: { 
-    fontSize: 22, 
-    fontWeight: "bold", 
-    color: THEME.textMain, 
-    marginBottom: 4 
+  avatarText: {
+    color: THEME.white,
+    fontSize: 26,
+    fontWeight: "bold",
+    lineHeight: 36,
   },
-  
-  // 玻璃拟态卡片
+  backdrop: { height: "100%", opacity: 0.8, width: "100%" },
+  commonMenu: { marginTop: 18 },
+  content: { paddingBottom: 32, paddingHorizontal: 22 },
+  fallDemo: { backgroundColor: THEME.demoRed, borderColor: THEME.demoRedBorder, marginRight: 12 },
+  fallText: { color: C.danger, fontSize: 14, fontWeight: "500", lineHeight: 22, marginTop: 8 },
   glassCard: {
     backgroundColor: THEME.cardBg,
-    borderRadius: 16,
-    padding: spacing.md,
-    borderWidth: 1,
     borderColor: THEME.cardBorder,
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: spacing.md,
   },
-
-  // 头像区域
-  avatarBox: {
-    width: 60, 
-    height: 60, 
-    borderRadius: 30,
-    backgroundColor: "#374151",
-    justifyContent: "center", 
+  gridBtn: {
     alignItems: "center",
-    marginRight: 16,
-    borderWidth: 2, 
-    borderColor: "rgba(255,255,255,0.2)",
+    borderRadius: 16,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 100,
+    paddingHorizontal: 12,
+    paddingVertical: 18,
   },
-  avatarText: { 
-    fontSize: 26, 
-    fontWeight: "bold", 
-    color: "#F9FAFB" 
+  headerTitle: {
+    color: THEME.textMain,
+    fontSize: 28,
+    fontWeight: "bold",
+    lineHeight: 40,
+    marginBottom: 22,
+  },
+  iconMargin: { marginRight: 12 },
+  lastRow: { borderBottomWidth: 0 },
+  logoutButton: {
+    alignItems: "center",
+    alignSelf: "center",
+    flexDirection: "row",
+    marginTop: 24,
+    minHeight: 48,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  logoutGap: { width: 6 },
+  logoutText: { color: C.secondary, fontSize: 14, lineHeight: 22 },
+  menuLabel: {
+    color: THEME.textMain,
+    flexShrink: 1,
+    fontSize: 16,
+    fontWeight: "500",
+    lineHeight: 24,
+  },
+  menuLeft: { alignItems: "center", flex: 1, flexDirection: "row", marginRight: 12 },
+  menuRow: {
+    borderBottomColor: THEME.divider,
+    borderBottomWidth: 1,
+    paddingVertical: 18,
+  },
+  screen: { backgroundColor: THEME.bg, flex: 1 },
+  sectionGroup: { marginTop: 24 },
+  sectionTitle: {
+    color: THEME.textSub,
+    fontSize: 13,
+    fontWeight: "bold",
+    lineHeight: 21,
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  testBtn: {
+    alignItems: "center",
+    borderTopColor: THEME.divider,
+    borderTopWidth: 1,
+    marginTop: 12,
+    paddingTop: 12,
+  },
+  testText: { color: C.primary, fontSize: 14, fontWeight: "500", lineHeight: 22 },
+  userInfo: { flex: 1 },
+  userName: {
+    color: THEME.textMain,
+    fontSize: 22,
+    fontWeight: "bold",
+    lineHeight: 32,
+    marginBottom: 4,
   },
   userTag: {
-    backgroundColor: "rgba(16, 185, 129, 0.2)",
-    paddingHorizontal: 8, 
-    paddingVertical: 2, 
-    borderRadius: 4,
     alignSelf: "flex-start",
+    backgroundColor: THEME.tagBg,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
   },
-  userTagText: { 
-    fontSize: 11, 
-    color: "#6EE7B7" 
-  },
-
-  // 菜单行
-  menuRow: {
-    paddingVertical: 18,
-    borderBottomWidth: 1, 
-    borderBottomColor: THEME.divider,
-  },
-  menuLabel: { 
-    fontSize: 16, 
-    color: THEME.textMain, 
-    fontWeight: "500" 
-  },
-
-  // 测试按钮
-  testBtn: {
-    marginTop: 12, 
-    paddingTop: 12,
-    borderTopWidth: 1, 
-    borderTopColor: THEME.divider,
-    alignItems: 'center'
-  },
-
-  // Grid 按钮
-  gridBtn: {
-    flex: 1, 
-    height: 100,
-    borderRadius: 16, 
-    borderWidth: 1,
-    justifyContent: 'center', 
-    alignItems: 'center',
+  userTagText: {
+    color: C.secondary,
+    fontSize: 11,
+    lineHeight: 18,
   },
 })

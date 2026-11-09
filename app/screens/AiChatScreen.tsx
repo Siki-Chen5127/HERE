@@ -22,6 +22,8 @@ import { Text } from "@/components/Text"
 import { Icon } from "@/components/Icon" 
 import Markdown from 'react-native-markdown-display'
 import { getHereApiErrorMessage, mobileApi } from "@/services/hereApi"
+import { useAuth } from "@/context/AuthContext"
+import { loadString, saveString } from "@/utils/storage"
 
 // --- 1. 配置与常量 ---
 
@@ -48,15 +50,54 @@ interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
+  reasoningContent?: string
+  isError?: boolean
 }
 
-const WAITING_TIPS = [
-  "正在用心倾听...",
-  "正在为您整理温暖的建议...",
-  "我在，请稍候...",
-  "您的感受很重要，我正在理解...",
-  "深呼吸，我正在回复..."
+const HISTORY_LIMIT = 100
+const createWelcomeMessages = (): Message[] => [
+  {
+    id: "init-1",
+    role: "assistant",
+    content:
+      "你好，我是你的安全助手。如果你感到不安、焦虑，或者只是想找人说说话，我会一直在这里陪着你。",
+  },
 ]
+
+const isStoredMessage = (value: unknown): value is Message => {
+  if (!value || typeof value !== "object") return false
+  const message = value as Partial<Message>
+  return (
+    typeof message.id === "string" &&
+    (message.role === "user" || message.role === "assistant") &&
+    typeof message.content === "string" &&
+    (message.reasoningContent === undefined ||
+      typeof message.reasoningContent === "string") &&
+    (message.isError === undefined ||
+      typeof message.isError === "boolean")
+  )
+}
+
+const readChatHistory = (storageKey: string): Message[] => {
+  const raw = loadString(storageKey)
+
+  if (!raw) return createWelcomeMessages()
+
+  try {
+    const parsed: unknown = JSON.parse(raw)
+
+    if (!Array.isArray(parsed)) return createWelcomeMessages()
+
+    const history = parsed
+      .filter(isStoredMessage)
+      .filter((message) => !message.isError)
+      .slice(-HISTORY_LIMIT)
+
+    return history.length ? history : createWelcomeMessages()
+  } catch {
+    return createWelcomeMessages()
+  }
+}
 
 // --- 2. 子组件：顶部导航栏 ---
 const ChatHeader = ({ onBack }: { onBack: () => void }) => {
@@ -73,7 +114,7 @@ const ChatHeader = ({ onBack }: { onBack: () => void }) => {
         </View>
         
         <View>
-          <Text style={styles.headerTitle} text="HERE 暖心助手" />
+          <Text style={styles.headerTitle} text="Here 暖心助手" />
           <View style={styles.statusRow}>
             <View style={styles.onlineDot} />
             <Text style={styles.onlineText} text="随时待命 倾听你的心声" />
@@ -87,6 +128,8 @@ const ChatHeader = ({ onBack }: { onBack: () => void }) => {
 // --- 3. 子组件：消息气泡 ---
 const MessageBubble = ({ item }: { item: Message }) => {
   const isUser = item.role === 'user'
+  const [reasoningExpanded, setReasoningExpanded] = useState(false)
+  const hasReasoning = !isUser && !!item.reasoningContent?.trim()
 
   const markdownStyles = {
     body: { 
@@ -120,6 +163,24 @@ const MessageBubble = ({ item }: { item: Message }) => {
         isUser ? styles.bubbleUser : styles.bubbleAi,
         { shadowColor: THEME.primary, shadowOpacity: isUser ? 0.1 : 0.05 }
       ]}>
+        {hasReasoning && (
+          <View style={styles.reasoningSection}>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityState={{ expanded: reasoningExpanded }}
+              onPress={() => setReasoningExpanded(current => !current)}
+              style={styles.reasoningToggle}
+            >
+              <Text
+                text={reasoningExpanded ? "收起思考内容 ▴" : "查看思考内容 ▾"}
+                style={styles.reasoningTitle}
+              />
+            </TouchableOpacity>
+            {reasoningExpanded && (
+              <Text text={item.reasoningContent} selectable style={styles.reasoningText} />
+            )}
+          </View>
+        )}
         <Markdown style={markdownStyles as any}>
           {item.content}
         </Markdown>
@@ -243,20 +304,45 @@ const InputToolbar = ({
 
 // --- 6. 主页面组件 ---
 export const AiChatScreen: FC<any> = ({ navigation }) => {
+  const { currentUser } = useAuth()
+  if (!currentUser?.id) return null
+  const storageKey = `here.aiChat.v1.${currentUser.id}`
+  return (
+    <AiChatSession
+      key={storageKey}
+      navigation={navigation}
+      storageKey={storageKey}
+    />
+  )
+}
+
+const AiChatSession: FC<{
+  navigation: any
+  storageKey: string
+}> = ({ navigation, storageKey }) => {
   const [inputText, setInputText] = useState("")
   const [loading, setLoading] = useState(false)
-  const [loadingText, setLoadingText] = useState("...")
   const [isExpandedMode, setExpandedMode] = useState(false) // 新增：控制全屏模式
   
   const flatListRef = useRef<FlatList>(null)
   
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'init-1',
-      role: 'assistant',
-      content: '你好，我是你的安全助手。如果你感到不安、焦虑，或者只是想找人说说话，我会一直在这里陪着你。'
-    }
-  ])
+  const [messages, setMessages] = useState<Message[]>(() =>
+  readChatHistory(storageKey),
+)
+  const [historySaveFailed, setHistorySaveFailed] = useState(false)
+
+useEffect(() => {
+  const history = messages
+    .filter((message) => !message.isError)
+    .slice(-HISTORY_LIMIT)
+
+  try {
+    const saved = saveString(storageKey, JSON.stringify(history))
+    setHistorySaveFailed(!saved)
+  } catch {
+    setHistorySaveFailed(true)
+  }
+}, [messages, storageKey])
 
   const scrollToEnd = () => {
     setTimeout(() => {
@@ -279,19 +365,20 @@ export const AiChatScreen: FC<any> = ({ navigation }) => {
     setMessages(newHistory)
     setInputText("")
     
-    setLoadingText(WAITING_TIPS[Math.floor(Math.random() * WAITING_TIPS.length)])
     setLoading(true)
     scrollToEnd()
     Keyboard.dismiss()
 
     try {
       const data = await mobileApi.chat(
-        newHistory.slice(-10).map(({ role, content }) => ({ role, content })),
+        newHistory.filter(message => !message.isError).slice(-10)
+          .map(({ role, content }) => ({ role, content })),
       )
       const aiMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: data.content,
+        reasoningContent: data.reasoning_content ?? "",
       }
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
       setMessages(prev => [...prev, aiMsg])
@@ -301,6 +388,7 @@ export const AiChatScreen: FC<any> = ({ navigation }) => {
         id: Date.now().toString(),
         role: 'assistant',
         content: getHereApiErrorMessage(error, '暖心助手暂时无法连接，请稍后重试。'),
+        isError: true,
       }])
     } finally {
       setLoading(false)
@@ -312,6 +400,20 @@ export const AiChatScreen: FC<any> = ({ navigation }) => {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={THEME.bg} />
       <ChatHeader onBack={() => navigation.goBack()} />
+      {historySaveFailed && (
+         <Text
+         text="本次聊天记录未能保存，退出后可能丢失。"
+         accessibilityRole="alert"
+         style={{
+          color: "#B45309",
+          backgroundColor: "#FEF3C7",
+          paddingHorizontal: 16,
+          paddingVertical: 8,
+          fontSize: 14,
+          lineHeight: 22,
+    }}
+  />
+)}
       <KeyboardAvoidingView 
         behavior="padding" 
         style={{ flex: 1 }}
@@ -334,7 +436,9 @@ export const AiChatScreen: FC<any> = ({ navigation }) => {
                    </Text>
                 </View>
                 <View style={styles.loadingBubble}>
-                   <Text style={{ fontSize: 12, color: THEME.textSub }}>{loadingText}</Text>
+                   <Text style={{ fontSize: 12, lineHeight: 20, color: THEME.textSub }}>
+                     深度思考中……
+                   </Text>
                 </View>
               </View>
             ) : <View style={{ height: 10 }} /> 
@@ -419,6 +523,15 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.bubbleUser,
     borderTopRightRadius: 4,
   },
+  reasoningSection: {
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
+  },
+  reasoningToggle: { minHeight: 44, justifyContent: 'center' },
+  reasoningTitle: { fontSize: 14, lineHeight: 22, color: THEME.primary, fontWeight: '600' },
+  reasoningText: { fontSize: 14, lineHeight: 24, color: THEME.textSub, marginTop: 6 },
   
   // Input
   inputBar: {

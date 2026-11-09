@@ -141,6 +141,24 @@ const migrations: Migration[] = [
       addColumnIfMissing("users", "college", "TEXT")
     },
   },
+    {
+    id: 4,
+    name: "add_daily_mood_records",
+    up: () => {
+      db.execSync(`
+        CREATE TABLE IF NOT EXISTS MoodRecord (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          userId TEXT NOT NULL,
+          recordDate TEXT NOT NULL,
+          mood TEXT NOT NULL
+            CHECK (mood IN ('good', 'okay', 'tired')),
+          createdAt TEXT NOT NULL,
+          updatedAt TEXT NOT NULL,
+          UNIQUE(userId, recordDate)
+        );
+      `)
+    },
+  },
 ]
 
 const ensureMigrationTable = () => {

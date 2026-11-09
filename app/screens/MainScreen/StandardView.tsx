@@ -1,11 +1,17 @@
 import React from "react"
-import { View, StyleSheet, TouchableOpacity, ScrollView } from "react-native"
+import { Alert, Image, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native"
+import { LinearGradient } from "expo-linear-gradient"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { MapView, MapType, Marker } from "react-native-amap3d"
 import { Text } from "@/components/Text"
-import { Icon } from "@/components/Icon"
+import {HomeIcon as Icon,type IconTypes,} from "./components/HomeIcon"
 import { isAMapConfigured } from "@/services/amap"
-import { useAppTheme } from "@/theme/context"
 import { HomeHeader } from "./components/HomeHeader"
+import { GlassSurface } from "./components/GlassSurface"
+import { SoftPressable } from "./components/SoftPressable"
+import { homeColors as C } from "./components/homeAppearance"
+import { useAuth } from "@/context/AuthContext"
+import { DailyMood } from "./components/DailyMood"
 
 interface StandardViewProps {
   user: any
@@ -22,208 +28,319 @@ interface StandardViewProps {
 }
 
 export const StandardView = (props: StandardViewProps) => {
-  const { theme: { colors } } = useAppTheme()
-  const { 
-    user, currentLocation, locationName, updateTime, timeline,
-    onCheckIn, onMoodBad, onSOS, onOpenMap, onNotificationPress 
+  const {
+    user,
+    currentLocation,
+    locationName,
+    updateTime,
+    navigation,
+    onCheckIn,
+    onSOS,
+    onOpenMap,
+    onNotificationPress,
   } = props
-  const [scrollEnabled, setScrollEnabled] = React.useState<boolean>(true)
+  const insets = useSafeAreaInsets()
+  const { currentUser } = useAuth()
+  const { fontScale } = useWindowDimensions()
+  const largeText = fontScale >= 1.3
+  const [scrollEnabled, setScrollEnabled] = React.useState(true)
   const mapRef = React.useRef<MapView>(null)
-  
-  // 1. 颜色兜底，防止主题色丢失
-  const primaryColor = colors.primary || '#10B981'
   const mapConfigured = isAMapConfigured()
-  const hasLocation = Number.isFinite(currentLocation?.latitude) && Number.isFinite(currentLocation?.longitude)
+  const hasLocation =
+    Number.isFinite(currentLocation?.latitude) && Number.isFinite(currentLocation?.longitude)
 
   const moveMapToCurrentLocation = React.useCallback(() => {
     const latitude = currentLocation?.latitude
     const longitude = currentLocation?.longitude
-
     if (!mapConfigured || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return
-
-    mapRef.current?.moveCamera(
-      {
-        target: { latitude, longitude },
-        zoom: 16,
-      },
-      500,
-    )
+    mapRef.current?.moveCamera({ target: { latitude, longitude }, zoom: 16 }, 500)
   }, [currentLocation?.latitude, currentLocation?.longitude, mapConfigured])
 
   React.useEffect(() => {
     moveMapToCurrentLocation()
   }, [moveMapToCurrentLocation])
 
-  return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
-      
-      {/* 1. 头部组件 */}
-      <HomeHeader user={user} onNotificationPress={onNotificationPress} />
+  const confirmCheckIn = () =>
+    Alert.alert(
+      "报平安",
+      "将打开短信应用，短信草稿包含当前位置。请检查收件人和内容，再由你确认发送。",
+      [
+        { text: "取消", style: "cancel" },
+        { text: "继续", onPress: onCheckIn },
+      ],
+    )
+  const upcomingHelp = () =>
+    Alert.alert("校园帮助", "校园支持服务尚未开放。开放后，你可以在这里查找联系渠道和服务时间。")
+  const upcomingProgress = () =>
+    Alert.alert("我的求助", "求助服务尚未开放。开放后，你可以在这里查看处理进度、回复和后续安排。")
 
-      {/* 2. 滚动内容区 */}
-      <ScrollView 
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 110, paddingBottom: 100 }}
+  const shortcut = (title: string, icon: IconTypes, action: () => void) => (
+    <SoftPressable
+      style={styles.shortcut}
+      onPress={action}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}，待开放`}
+    >
+      <View style={styles.shortcutContent}>
+        <Icon icon={icon} size={23} color={C.text} />
+        <View style={styles.shortcutText}>
+          <Text text={title} style={styles.shortcutTitle} />
+          <Text text="待开放" style={styles.microText} />
+        </View>
+        <Icon icon="caretRight" size={15} color={C.secondary} />
+      </View>
+    </SoftPressable>
+  )
+
+  return (
+    <View style={styles.container}>
+      <View
+        pointerEvents="none"
+        style={StyleSheet.absoluteFill}
+        accessible={false}
+        importantForAccessibility="no-hide-descendants"
+      >
+        <Image
+          source={require("../../../assets/images/home-ambient.png")}
+          resizeMode="cover"
+          style={styles.backdrop}
+        />
+        <LinearGradient
+          colors={["rgba(247,247,230,0.05)", "rgba(242,244,232,0.35)", "rgba(237,242,230,0.82)"]}
+          style={StyleSheet.absoluteFill}
+        />
+      </View>
+      <ScrollView
+        testID="home-scroll"
+        style={styles.scroll}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}
         showsVerticalScrollIndicator={false}
         scrollEnabled={scrollEnabled}
       >
-        {/* A. 地图主卡片 */}
-        <View 
-          style={[styles.mapCard, { backgroundColor: colors.surface }]}
-          onTouchStart={() => setScrollEnabled(false)}
-          onTouchEnd={() => setScrollEnabled(true)}
-          onTouchCancel={() => setScrollEnabled(true)}
-        > 
-          {mapConfigured && hasLocation ? (
-            <MapView
-              ref={mapRef}
-              mapType={MapType.Standard}
-              initialCameraPosition={{ target: props.currentLocation, zoom: 16 }}
-              onLoad={moveMapToCurrentLocation}
-              style={{ flex: 1 }}
-              scrollGesturesEnabled={true}
-              zoomGesturesEnabled={true}
-              zoomControlsEnabled={false}
-            >
-              <Marker position={currentLocation} />
-            </MapView>
-          ) : (
-            <View style={styles.mapUnavailable}>
-              <Icon icon="location" size={34} color={primaryColor} />
-              <Text
-                text={mapConfigured ? "正在获取当前位置" : "地图服务暂未配置"}
-                style={styles.mapUnavailableTitle}
-              />
-              <Text
-                text={mapConfigured ? "定位完成后地图会自动显示当前位置" : "请完成高德地图 Key 配置后重新启动应用"}
-                style={styles.mapUnavailableHint}
-              />
-            </View>
-          )}
-          
-          <View style={styles.floatAddressBar}>
-            <View style={[styles.iconCircle, { backgroundColor: '#F0F9F6' }]}>
-              <Icon icon="view" size={22} color={primaryColor} />
-            </View>
-            <View style={{ flex: 1, paddingHorizontal: 10 }}>
-              <Text text={locationName} numberOfLines={1} style={{ fontWeight: 'bold', fontSize: 15, color: '#333' }} />
-              <Text text={`更新于 ${updateTime}`} style={{ fontSize: 11, color: '#999', marginTop: 2 }} />
-            </View>
-            <TouchableOpacity style={[styles.navBtnSmall, {backgroundColor: primaryColor + '15'}]} onPress={onOpenMap}>
-              <Text text="导航" style={{ fontSize: 12, color: primaryColor, fontWeight: 'bold' }} />
-            </TouchableOpacity>
-          </View>
-        </View>
+        <HomeHeader
+          user={user}
+          onNotificationPress={onNotificationPress}
+          onProfilePress={() => navigation.navigate("ProfileEdit")}
+        />
 
-       {/* SOS 紧急求助 */}
-        <TouchableOpacity style={[styles.sosButton, { backgroundColor: colors.error, shadowColor: colors.error }]} onPress={onSOS}>
-          <Icon icon="sos" size={26} color={null} style={{ marginRight: 10 }} />
-          <Text text="紧急求助" style={{ fontSize: 20, fontWeight: 'bold', color: 'white' }} />
-        </TouchableOpacity>
+        <DailyMood
+          key={currentUser?.id ?? "signed-out"}
+          userId={currentUser?.id ?? null}
+          largeText={largeText}
+        />
 
-        {/* B. 功能按钮区 */}
-        {/*报平安*/}
-        <TouchableOpacity style={styles.actionCard} onPress={onCheckIn}>
-          <View style={[styles.iconBox, { backgroundColor: '#ECFDF5' }]}>
-            <Icon icon="check" size={28} color={null} />
-          </View>
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text text="一键报平安" style={{ fontSize: 16, fontWeight: 'bold', color: '#333' }} />
-            <Text text="同步位置给家人" style={{ fontSize: 12, color: '#999', marginTop: 2 }} />
-          </View>
-          <Icon icon="caretRight" size={16} color={null} />
-        </TouchableOpacity>
-
-        {/*状态不佳*/}
-        <TouchableOpacity style={styles.actionCard} onPress={onMoodBad}>
-          <View style={[styles.iconBox, { backgroundColor: '#EFF6FF' }]}>
-            <Icon icon="view" size={28} color={null} />
-          </View>
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text text="我今天状态不佳" style={{ fontSize: 16, fontWeight: 'bold', color: '#333' }} />
-            <Text text="和朋友聊聊吧" style={{ fontSize: 12, color: '#999', marginTop: 2 }} />
-          </View>
-          <Icon icon="caretRight" size={16} color={null} />
-        </TouchableOpacity>
-
-        {/*电子围栏设置*/}
-        <TouchableOpacity 
-          style={styles.actionCard} 
-          onPress={() => props.navigation.navigate("Geofence", { elderId: props.user?.id, elderName: props.user?.displayName })}
+        <SoftPressable
+          testID="home-chat"
+          onPress={() => navigation.navigate("AiChat")}
+          accessibilityRole="button"
+          accessibilityLabel="聊一聊，进入 AI 对话"
+          style={styles.chatAction}
         >
-          <View style={[styles.iconBox, { backgroundColor: '#FEF3C7' }]}>            
-            <Icon icon="radar" size={28} color={null} />
-          </View>
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text text="电子围栏设置" style={{ fontSize: 16, fontWeight: 'bold', color: '#333' }} />
-            <Text text="设定安全区域，离开即报警" style={{ fontSize: 12, color: '#999', marginTop: 2 }} />
-          </View>
-          <Icon icon="caretRight" size={16} color={null} />
-        </TouchableOpacity>
-
-        {/* 轨迹预览 */}
-        <View style={styles.timelineContainer}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
-            <Text text="行动轨迹" style={{ fontSize: 16, fontWeight: 'bold', color: '#333' }}
-            numberOfLines={1} 
-            adjustsFontSizeToFit />
+          <GlassSurface green contentStyle={styles.chatContent}>
+            <View style={styles.chatIcon}>
+              <Icon icon="write" size={29} color="#F5F8EB" />
             </View>
-          
-          <View style={{ paddingLeft: 6 }}>
-            <View style={{ position: 'absolute', left: 11, top: 6, bottom: 20, width: 2, backgroundColor: '#eee' }} />
-            {timeline.map((item, index) => (
-              <View key={item.id} style={{ flexDirection: 'row', marginBottom: 20 }}>
-                <View style={[styles.timelineDot, { backgroundColor: index === 0 ? primaryColor : '#ddd' }]} />
-                <View style={{ marginLeft: 16 }}>
-                  <Text text={`${item.status === 'arrived' ? '到达' : '离开'} ${item.location}`} style={{ fontSize: 14, fontWeight: index === 0 ? 'bold' : 'normal', color: '#333' }} />
-                  <Text text={item.time} style={{ fontSize: 12, color: '#999', marginTop: 2 }} />
-                </View>
-              </View>
-            ))}
-          </View>
+            <View style={styles.chatText}>
+              <Text text="聊一聊" style={styles.chatTitle} />
+              <Text text="有什么想说的，慢慢说。" style={styles.chatDescription} />
+            </View>
+            <Icon icon="caretRight" size={22} color="#EDF3E5" />
+          </GlassSurface>
+        </SoftPressable>
+
+        <View style={[styles.shortcuts, largeText && styles.stack]}>
+          {shortcut("校园帮助", "contact", upcomingHelp)}
+          {!largeText && <View style={styles.shortcutDivider} />}
+          {shortcut("我的求助", "mood", upcomingProgress)}
         </View>
 
+        <View style={styles.sectionHeading}>
+          <Text text="附近" style={styles.sectionTitle} />
+          <Text text="当前位置" style={styles.microText} />
+        </View>
+        <GlassSurface contentStyle={styles.mapFrame}>
+          <View style={styles.mapClip}>
+            <View
+              style={styles.mapArea}
+              onTouchStart={() => setScrollEnabled(false)}
+              onTouchEnd={() => setScrollEnabled(true)}
+              onTouchCancel={() => setScrollEnabled(true)}
+            >
+              {mapConfigured && hasLocation ? (
+                <MapView
+                  ref={mapRef}
+                  mapType={MapType.Standard}
+                  initialCameraPosition={{ target: currentLocation, zoom: 16 }}
+                  onLoad={moveMapToCurrentLocation}
+                  style={styles.map}
+                  scrollGesturesEnabled
+                  zoomGesturesEnabled
+                  zoomControlsEnabled={false}
+                >
+                  <Marker position={currentLocation} />
+                </MapView>
+              ) : (
+                <View style={styles.mapPlaceholder}>
+                  <Icon icon="location" size={28} color={C.primary} />
+                  <Text
+                    text={mapConfigured ? "正在获取当前位置" : "地图暂时不可用"}
+                    style={styles.placeholderText}
+                  />
+                </View>
+              )}
+            </View>
+          </View>
+          <View style={styles.addressRow}>
+            <Icon icon="location" size={20} color={C.text} />
+            <View style={styles.addressContent}>
+              <Text
+                text={locationName || "暂未获取位置"}
+                style={styles.addressText}
+                numberOfLines={2}
+              />
+              {hasLocation && <Text text={`位置更新于 ${updateTime}`} style={styles.microText} />}
+            </View>
+            <SoftPressable
+              testID="home-open-map"
+              onPress={onOpenMap}
+              disabled={!hasLocation}
+              accessibilityRole="button"
+              accessibilityLabel="打开当前位置地图"
+              accessibilityState={{ disabled: !hasLocation }}
+            >
+              <View style={styles.mapButton}>
+                <Icon icon="navigation" size={22} color={hasLocation ? C.primary : C.secondary} />
+              </View>
+            </SoftPressable>
+          </View>
+        </GlassSurface>
+
+        <View style={[styles.utilityRow, largeText && styles.stack]}>
+          <SoftPressable
+            testID="home-check-in"
+            style={styles.utility}
+            onPress={confirmCheckIn}
+            accessibilityRole="button"
+            accessibilityLabel="报平安，确认后打开短信草稿"
+          >
+            <View style={styles.utilityContent}>
+              <Icon icon="check" size={23} color={C.primary} />
+              <Text text="报平安" style={styles.utilityTitle} />
+            </View>
+          </SoftPressable>
+          {!largeText && <View style={styles.shortcutDivider} />}
+          <SoftPressable
+            testID="home-sos"
+            style={styles.utility}
+            onPress={onSOS}
+            accessibilityRole="button"
+            accessibilityLabel="紧急求助"
+          >
+            <View style={styles.utilityContent}>
+              <Icon icon="alert" size={23} color={C.danger} />
+              <Text text="紧急求助" style={[styles.utilityTitle, styles.dangerText]} />
+            </View>
+          </SoftPressable>
+        </View>
+        <View style={styles.followUp}>
+          <View style={styles.followUpHeading}>
+            <Text text="后续安排" style={styles.followUpTitle} />
+            <Text text="待开放" style={styles.microText} />
+          </View>
+          <Text
+            text="求助服务开放后，这里会显示回复与跟进安排。"
+            style={styles.followUpDescription}
+          />
+        </View>
       </ScrollView>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  mapCard: {
-    height: 380, // 稍微加高一点，视野更好
-    borderRadius: 24, 
-    overflow: 'hidden', 
-    marginBottom: 16,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, elevation: 5,
-    borderWidth: 1, borderColor: 'white',
-    backgroundColor: 'white'
+  container: { flex: 1, backgroundColor: C.background },
+  backdrop: { width: "100%", height: "100%" },
+  scroll: { flex: 1 },
+  content: { paddingHorizontal: 22, paddingBottom: 32 },
+  chatAction: { marginBottom: 13 },
+  chatContent: {
+    paddingHorizontal: 19,
+    paddingVertical: 25,
+    flexDirection: "row",
+    alignItems: "center",
   },
-  mapUnavailable: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingBottom: 64,
-    backgroundColor: '#F3F4F6',
+  chatIcon: {
+    paddingRight: 15,
+    marginRight: 15,
+    borderRightWidth: 1,
+    borderRightColor: "rgba(245,248,235,0.3)",
   },
-  mapUnavailableTitle: { marginTop: 12, color: '#374151', fontSize: 16, fontWeight: 'bold' },
-  mapUnavailableHint: { marginTop: 6, color: '#6B7280', fontSize: 12, textAlign: 'center' },
-  floatAddressBar: {
-    position: 'absolute', bottom: 12, left: 12, right: 12,
-    backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 16, padding: 8,
-    flexDirection: 'row', alignItems: 'center', shadowColor: "#000", shadowOpacity: 0.05, elevation: 2,
+  chatText: { flex: 1, marginRight: 8 },
+  chatTitle: { fontSize: 25, lineHeight: 35, fontWeight: "600", color: "#FAFBF2", marginBottom: 4 },
+  chatDescription: { fontSize: 13, lineHeight: 21, color: "#E8F0E2" },
+  shortcuts: { flexDirection: "row", alignItems: "center", marginBottom: 19 },
+  shortcut: { flex: 1, alignSelf: "stretch" },
+  shortcutContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 64,
+    paddingHorizontal: 8,
+    paddingVertical: 9,
   },
-  iconCircle: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
-  navBtnSmall: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  actionCard: {
-    backgroundColor: 'white', borderRadius: 20, padding: 16, marginBottom: 12,
-    flexDirection: 'row', alignItems: 'center',
-    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, elevation: 2,
+  shortcutText: { flex: 1, marginLeft: 9, marginRight: 3 },
+  shortcutTitle: { fontSize: 15, lineHeight: 23, fontWeight: "500", color: C.text },
+  shortcutDivider: { width: 1, height: 25, backgroundColor: C.line, marginHorizontal: 5 },
+  microText: { fontSize: 11, lineHeight: 18, color: C.secondary },
+  sectionHeading: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    marginBottom: 12,
   },
-  iconBox: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  sosButton: {
-    height: 64, borderRadius: 20, flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
-    marginBottom: 24, elevation: 8, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3,
+  sectionTitle: { fontSize: 20, lineHeight: 29, fontWeight: "600", color: C.text },
+  mapFrame: { padding: 5 },
+  mapClip: { overflow: "hidden", borderRadius: 19 },
+  mapArea: { height: 202, backgroundColor: "#E5EBDB" },
+  map: { flex: 1 },
+  mapPlaceholder: { flex: 1, alignItems: "center", justifyContent: "center", padding: 20 },
+  placeholderText: { fontSize: 14, lineHeight: 22, color: C.secondary, marginTop: 8 },
+  addressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingLeft: 10,
+    paddingVertical: 9,
+    paddingRight: 3,
   },
-  timelineContainer: { backgroundColor: 'white', borderRadius: 24, padding: 20, marginBottom: 40 },
-  timelineDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: 'white', zIndex: 1 },
+  addressContent: { flex: 1, marginLeft: 9, marginRight: 5 },
+  addressText: { fontSize: 13, lineHeight: 21, fontWeight: "500", color: C.text },
+  mapButton: { width: 48, minHeight: 48, alignItems: "center", justifyContent: "center" },
+  utilityRow: { flexDirection: "row", alignItems: "center", marginTop: 14, marginBottom: 14 },
+  utility: { flex: 1, alignSelf: "stretch" },
+  utilityContent: {
+    minHeight: 56,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  utilityTitle: {
+    fontSize: 16,
+    lineHeight: 25,
+    fontWeight: "500",
+    color: C.primary,
+    flexShrink: 1,
+  },
+  dangerText: { color: C.danger },
+  followUp: { borderTopWidth: 1, borderTopColor: C.line, paddingTop: 15, paddingHorizontal: 3 },
+  followUpHeading: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    marginBottom: 5,
+  },
+  followUpTitle: { fontSize: 14, lineHeight: 22, fontWeight: "500", color: C.text },
+  followUpDescription: { fontSize: 12, lineHeight: 20, color: C.secondary },
+  stack: { flexDirection: "column", alignItems: "stretch" },
 })

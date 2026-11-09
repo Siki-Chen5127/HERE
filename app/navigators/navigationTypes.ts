@@ -28,6 +28,7 @@ export type MainStackParamList = {
 export type AppStackParamList = {
   // --- “未认证”区域 ---
   Login: undefined
+  ForgotPassword: { phone?: string }
 
   // --- “已认证”区域 ---
   PersonaSelect: undefined
