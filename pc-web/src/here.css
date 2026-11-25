@@ -1,0 +1,144 @@
+:root {
+  --here-ink: #293d33;
+  --here-deep: #305843;
+  --here-green: #dfe9d7;
+  --here-honey: #f2eacb;
+  --here-paper: #faf8ef;
+  --here-line: #d6dece;
+  --here-ease: cubic-bezier(.21,.75,.25,1);
+}
+
+html, body { background: var(--here-paper); color: var(--here-ink); }
+.here-workspace {
+  background: radial-gradient(ellipse at 96% 6%, #e1ead5 0, transparent 46%), var(--here-paper);
+}
+.here-workspace :is(aside, header).bg-white { background: #fcfbf1; }
+.here-workspace aside { border-color: var(--here-line); }
+.here-workspace header.bg-white { background: #faf8efed; border-color: var(--here-line); }
+.here-workspace main .shadow-sm { box-shadow: none; }
+.here-workspace main :is(section, article).bg-white { background: #fdfcf5; border-color: var(--here-line); }
+.here-workspace main .bg-slate-50 { background: #f3f4e8; }
+.here-workspace button[aria-current="page"] {
+  background: var(--here-green);
+  color: var(--here-deep);
+  box-shadow: inset 3px 0 var(--here-deep);
+}
+.here-brand { background: var(--here-deep); border-radius: 15px 15px 15px 4px; }
+.here-route { animation: here-enter 280ms var(--here-ease) both; }
+@keyframes here-enter {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.here-login {
+  background: radial-gradient(ellipse at 94% 9%, #e1ead6, transparent 53%), var(--here-paper);
+}
+.here-login .here-login-cover {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background-color: #dfe9d4;
+  background-image: linear-gradient(105deg, #f0e9c9ed, #e3ebd4a6 66%, #adc7a679), url('/here-ambient.png');
+  background-size: cover;
+  background-position: center;
+  color: var(--here-ink);
+}
+.here-login-cover::after {
+  content: "";
+  position: absolute;
+  width: 66%;
+  aspect-ratio: 1;
+  right: -32%;
+  top: 18%;
+  border-radius: 46% 54% 55% 45%;
+  transform: rotate(-28deg);
+  border: clamp(24px, 5vw, 68px) solid #fbf7d955;
+  pointer-events: none;
+  z-index: -1;
+}
+.here-login-cover h1 { font-size: clamp(2.55rem,4.2vw,5rem); line-height: 1.15; letter-spacing: -.05em; }
+.here-login-cover p { max-width: 20em; line-height: 1.75; color: #4e6654; }
+.here-login .here-login-panel { background: transparent; border: 0; box-shadow: none; padding-inline: 0; }
+.here-login form > button[type="submit"], .here-workspace button.bg-slate-900 { background-color: var(--here-deep); }
+.here-login form, .here-welcome { animation: here-enter 280ms var(--here-ease) both; }
+.here-welcome {
+  border-radius: 26px;
+  background: linear-gradient(102deg, #f3ebce, #e8eedb 76%);
+  padding: clamp(22px, 6vw, 39px);
+}
+.here-welcome h2 { font-size: clamp(1.7rem, 3vw, 2.65rem); line-height: 1.2; color: var(--here-ink); }
+.here-metrics { border-top: 1px solid var(--here-line); border-bottom: 1px solid var(--here-line); }
+.here-metric { padding: clamp(15px, 2.6vw, 26px); border-inline-start: 1px solid var(--here-line); }
+.here-metric:first-child { border-inline-start: 0; }
+.here-metric-value { font-variant-numeric: tabular-nums; }
+.here-workspace main :is(section,article,div).rounded-lg.border.bg-white { border-radius: 21px; }
+.here-workspace main :is(section,article,div).rounded-md.border.bg-white { border-radius: 16px; }
+.here-workbench { display: grid; gap: 24px; }
+.here-dashboard-links, .here-task-feed { min-width: 0; padding: 18px 0; border-top: 1px solid var(--here-line); }
+.here-section-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.here-task-action { min-height: 44px; display: inline-flex; gap: 6px; align-items: center; font-weight: 650; color: var(--here-deep); font-size: .9rem; }
+.here-task-action:hover { text-decoration: underline; }
+.here-task-empty { color: #506756; padding: 21px 0; line-height: 1.75; font-size: .94rem; }
+.here-task-empty p { margin-top: 6px; }
+.here-task-state { color: var(--here-deep); font-size: .8rem; background: var(--here-green); padding: 4px 9px; border-radius: 100px; }
+.here-recent { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--here-line); }
+.here-dashboard-links h2 { margin-bottom: 10px; }
+.here-dashboard-link {
+  width: 100%;
+  min-height: 68px;
+  padding: 10px 8px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  border-bottom: 1px solid var(--here-line);
+  color: var(--here-deep);
+}
+.here-dashboard-link:hover { background: #e9eedc; }
+.here-dashboard-link small { display: block; margin-top: 3px; color: #506756; }
+@media (min-width: 1024px) {
+  .here-dashboard { min-height: calc(100svh - 145px); display: flex; flex-direction: column; }
+  .here-welcome { min-height: 178px; display: grid; align-content: center; }
+  .here-workbench { flex: 1; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 32px; border-bottom: 1px solid var(--here-line); padding-bottom: 18px; }
+  .here-dashboard-link { min-height: 78px; }
+}
+.here-workspace button, .here-login button { transition: background-color .18s, color .18s, transform .17s var(--here-ease); }
+.here-workspace button:active:not(:disabled), .here-login button:active:not(:disabled) { transform: scale(.975); }
+:is(.here-workspace, .here-login) :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid #4c7659;
+  outline-offset: 3px;
+}
+.here-feedback-layer {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 150;
+}
+.here-feedback {
+  pointer-events: none;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  max-width: min(90vw, 310px);
+  border-radius: 24px;
+  border: 1px solid var(--here-line);
+  background: #fffdf5;
+  box-shadow: 0 14px 36px #334a392e;
+  padding: 20px 25px;
+  color: var(--here-deep);
+  font-weight: 650;
+  text-align: center;
+  animation: here-feedback-in 220ms var(--here-ease) both;
+}
+.here-feedback-mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: var(--here-green); }
+@keyframes here-feedback-in { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .here-route, .here-login form, .here-welcome, .here-feedback { animation: none; }
+  .here-workspace button, .here-workspace aside, .here-login button { transition: none; }
+}
+@media (max-width: 639px) {
+  .here-metric:nth-child(odd) { border-inline-start: 0; }
+  .here-metric:nth-child(n+3) { border-top: 1px solid var(--here-line); }
+}
