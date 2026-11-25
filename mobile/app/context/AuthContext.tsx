@@ -1,0 +1,155 @@
+import {
+  createContext,
+  FC,
+  PropsWithChildren,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
+import { useMMKVString } from "react-native-mmkv"
+
+import { usersRepository } from "@/services/database/repositories"
+import {
+  AUTH_PERSONA_KEY,
+  AUTH_TOKEN_KEY,
+  AUTH_USER_KEY,
+  type AuthSession,
+  type StudentUser,
+} from "@/services/hereApi"
+
+export type AuthContextType = {
+  isAuthenticated: boolean
+  authToken: string | null
+  currentUser: StudentUser | null
+  userRole: string | null
+  isLoading: boolean
+  login: (session: AuthSession) => void
+  logout: () => void
+  updateRole: (role: string) => void
+}
+
+export const AuthContext = createContext<AuthContextType | null>(null)
+
+const WEB_SESSION_RESTORE_TIMEOUT_MS = 3000
+
+const getSavedPersonaRole = (role: string | null | undefined) =>
+  role === "self" || role === "carer" || role === "elder" ? role : undefined
+
+export const AuthProvider: FC<PropsWithChildren<{}>> = ({ children }) => {
+  const [authToken, setAuthToken] = useMMKVString(AUTH_TOKEN_KEY)
+  const [authUserJson, setAuthUserJson] = useMMKVString(AUTH_USER_KEY)
+  const [userRole, setUserRole] = useMMKVString(AUTH_PERSONA_KEY)
+  const [isLoading, setIsLoading] = useState(true)
+
+  const currentUser = useMemo<StudentUser | null>(() => {
+    if (!authUserJson) return null
+    try {
+      return JSON.parse(authUserJson) as StudentUser
+    } catch {
+      return null
+    }
+  }, [authUserJson])
+
+  // 1. App 启动时：检查本地令牌
+  useEffect(() => {
+    setIsLoading(true)
+    const legacyToken = authToken?.startsWith("sqlite_local_token_")
+    if (typeof document !== "undefined" && authToken && !legacyToken && currentUser?.phone) {
+      let active = true
+      const finish = () => {
+        if (!active) return
+        active = false
+        setIsLoading(false)
+      }
+      const timeout = setTimeout(finish, WEB_SESSION_RESTORE_TIMEOUT_MS)
+
+      void usersRepository.restoreAuthenticatedUserAsync(currentUser.phone, () => active)
+        .then((user) => {
+          if (active && user) setUserRole(getSavedPersonaRole(user.role))
+        })
+        .catch((error: unknown) => {
+          if (active) console.warn("恢复网页本地账号状态失败", error)
+        })
+        .finally(() => {
+          clearTimeout(timeout)
+          finish()
+        })
+
+      return () => {
+        active = false
+        clearTimeout(timeout)
+      }
+    }
+
+    try {
+      if (!authToken || legacyToken) {
+        usersRepository.clearActiveUser()
+        if (legacyToken) setAuthToken(undefined)
+        setAuthUserJson(undefined)
+        setUserRole(undefined)
+      } else if (currentUser?.phone) {
+        const localUser = usersRepository.cacheAuthenticatedUser(currentUser.phone)
+        setUserRole(getSavedPersonaRole(localUser.role))
+      }
+    } catch (error) {
+      console.warn("恢复本地账号状态失败", error)
+    } finally {
+      setIsLoading(false)
+    }
+    return undefined
+  }, [authToken, currentUser?.phone, setAuthToken, setAuthUserJson, setUserRole])
+
+  // 2. 登录函数
+  const login = useCallback(
+    (session: AuthSession) => {
+      const localUser = session.user.phone
+        ? usersRepository.cacheAuthenticatedUser(session.user.phone)
+        : usersRepository.getActiveUser()
+      setAuthUserJson(JSON.stringify(session.user))
+      setAuthToken(session.access_token)
+      setUserRole(getSavedPersonaRole(localUser?.role))
+    },
+    [setAuthToken, setAuthUserJson, setUserRole],
+  )
+
+  // 3. 登出函数
+  const logout = useCallback(() => {
+    setAuthToken(undefined)
+    setAuthUserJson(undefined)
+    setUserRole(undefined)
+    try {
+      usersRepository.clearActiveUser()
+    } catch (error) {
+      console.warn("清理本地用户状态失败", error)
+    }
+  }, [setAuthToken, setAuthUserJson, setUserRole])
+
+  // 4. 更新角色函数 (给 PersonaSelectScreen 用)
+  const updateRole = useCallback(
+    (role: string) => {
+      setUserRole(role)
+    },
+    [setUserRole],
+  )
+
+  const value = {
+    isAuthenticated: !!authToken && !!currentUser,
+    authToken: authToken ?? null,
+    currentUser,
+    userRole: userRole ?? null,
+    isLoading,
+    login,
+    logout,
+    updateRole,
+  }
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+export const useAuth = () => {
+  const context = useContext(AuthContext)
+  if (!context) throw new Error("useAuth must be used within an AuthProvider")
+  return context
+}
