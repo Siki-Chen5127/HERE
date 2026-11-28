@@ -3,19 +3,26 @@ import { showSuccess } from '../components/SuccessFeedback'
 import { useState } from 'react'
 import { authApi, getApiErrorMessage } from '../services/api'
 
-const counselorEmail = import.meta.env.VITE_DEMO_COUNSELOR_EMAIL?.trim()
-const counselorPassword = import.meta.env.VITE_DEMO_COUNSELOR_PASSWORD
+// VITE_* values are public in the browser. Only opt into all four roles
+// when the backend is connected to a dedicated fictional contest database.
+const demoEnabled = import.meta.env.DEV || import.meta.env.VITE_CONTEST_DEMO_MODE === 'true'
+const configuredDemos = demoEnabled ? [
+  { label: '辅导员', email: import.meta.env.VITE_DEMO_COUNSELOR_EMAIL, password: import.meta.env.VITE_DEMO_COUNSELOR_PASSWORD },
+  { label: '心理咨询师', email: import.meta.env.VITE_DEMO_PSYCHOLOGIST_EMAIL, password: import.meta.env.VITE_DEMO_PSYCHOLOGIST_PASSWORD },
+  { label: '中心负责人', email: import.meta.env.VITE_DEMO_DIRECTOR_EMAIL, password: import.meta.env.VITE_DEMO_DIRECTOR_PASSWORD },
+  { label: '管理员', email: import.meta.env.VITE_DEMO_ADMIN_EMAIL, password: import.meta.env.VITE_DEMO_ADMIN_PASSWORD },
+].filter(account => account.email?.trim() && account.password).map(account => ({ ...account, email: account.email.trim() })) : []
 
-const demoAccounts = [
-  ...(counselorEmail && counselorPassword ? [
-    { label: '辅导员', email: counselorEmail, password: counselorPassword },
-  ] : []),
-  ...(import.meta.env.DEV ? [
-    { label: '心理咨询师', email: 'psychologist@here.edu', password: 'Psychologist123!' },
-    { label: '中心负责人', email: 'director@here.edu', password: 'Director123!' },
-    { label: '管理员', email: 'admin@here.edu', password: 'ChangeMe123!' },
-  ] : []),
-]
+const demoAccounts = import.meta.env.DEV
+  ? [
+      ...configuredDemos,
+      ...[
+        { label: '心理咨询师', email: 'psychologist@here.edu', password: 'Psychologist123!' },
+        { label: '中心负责人', email: 'director@here.edu', password: 'Director123!' },
+        { label: '管理员', email: 'admin@here.edu', password: 'ChangeMe123!' },
+      ].filter(account => !configuredDemos.some(configured => configured.label === account.label)),
+    ]
+  : import.meta.env.VITE_CONTEST_DEMO_MODE === 'true' ? configuredDemos : []
 
 export default function LoginPage({ onLogin }) {
   const initialResetToken = new URLSearchParams(window.location.search).get('reset_token') || ''

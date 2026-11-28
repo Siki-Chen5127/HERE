@@ -107,6 +107,20 @@ Copy-Item .env.example .env
 
 这些账号仅用于本机开发。部署前必须删除演示账号、关闭 `HERE_BOOTSTRAP_ADMIN`、更换 JWT 密钥并重置管理员密码。
 
+
+### 比赛专用演示数据库（隔离生成）
+
+不要将包含真实学生数据的数据库上传到 GitHub，也不要将下方老版开发种子脚本用于正式业务库。新的脚本仅接受**不存在的 SQLite 文件**，创建全新的虚构数据（学生 4 人、工作人员 4 人、求助 3 件、预约个案 3 件），不读取或写入原业务库。
+
+在后端目录中，使用当前学生端和辅导员端快捷填充所对应的演示标识运行：
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.seed_contest_demo --output E:\PROJECT\here\public\here-contest-demo.sqlite3 --student-phone 14785296398 --counselor-email wuzetian@qq.com
+```
+
+程序会隐藏输入过程，分别让你设置演示学生、辅导员、咨询师、负责人和独立的管理员密码。前两者必须与前端演示入口一致。生成文件只用于独立演示服务；如果需要线上使用，由部署负责人备份现有数据并核对独立的数据库连接配置后启用，不要覆盖原数据库。
+
+
 ## PC 管理端
 
 启动和构建方式见 [PC 工作台说明](../pc-web/README.md)。
