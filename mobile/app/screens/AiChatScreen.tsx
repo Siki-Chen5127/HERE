@@ -13,9 +13,7 @@ import {
   StatusBar,
   ViewStyle,
   TextStyle,
-  Keyboard,
-  Modal,
-  SafeAreaView
+  Keyboard
 } from "react-native"
 import type { NativeSyntheticEvent, TextInputKeyPressEventData } from "react-native"
 import Feather from "@expo/vector-icons/Feather"
@@ -23,7 +21,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Text } from "@/components/Text"
 import { Icon } from "@/components/Icon" 
 import Markdown from 'react-native-markdown-display'
-import { getHereApiErrorMessage, mobileApi } from "@/services/hereApi"
+import { getHereApiErrorMessage, HereApiError, mobileApi } from "@/services/hereApi"
+import { JournalModal } from "@/components/JournalModal"
 import { useAuth } from "@/context/AuthContext"
 import { loadString, saveString } from "@/utils/storage"
 import { studentFrame, studentUi as ui } from "@/theme/studentUi"
@@ -72,6 +71,7 @@ interface Message {
 }
 
 const HISTORY_LIMIT = 100
+const MAX_CHAT_LENGTH = 2000
 const createWelcomeMessages = (): Message[] => [
   {
     id: "init-1",
@@ -206,60 +206,6 @@ const MessageBubble = ({ item }: { item: Message }) => {
   )
 }
 
-// --- 4. 子组件：全屏写信模式 (修复状态栏遮挡) ---
-const ExpandedInputModal = ({ 
-  visible, 
-  onClose, 
-  onSend, 
-  text, 
-  onChangeText 
-}: { 
-  visible: boolean, 
-  onClose: () => void, 
-  onSend: () => void,
-  text: string,
-  onChangeText: (t: string) => void
-}) => {
-  const insets = useSafeAreaInsets() // 获取安全区域距离
-  
-  if (!visible) return null
-  
-  return (
-    <Modal visible={visible} animationType="slide" presentationStyle="overFullScreen">
-      <View style={{ flex: 1, backgroundColor: THEME.bg, paddingTop: insets.top + 30 }}>  
-        <View style={styles.modalHeader}>
-          <TouchableOpacity onPress={onClose} hitSlop={{top:10, bottom:10, left:10, right:10}}>
-            <Text style={{ fontSize: 16, color: THEME.textSub }}>收起</Text>
-          </TouchableOpacity>
-          <Text style={{ fontSize: 17, fontWeight: 'bold', color: THEME.textMain }}>写信给助手</Text>
-          <TouchableOpacity 
-            onPress={onSend} 
-            disabled={!text.trim()}
-          >
-            <Text style={{ fontSize: 16, fontWeight: 'bold', color: !text.trim() ? '#ccc' : THEME.primary }}
-            numberOfLines={1}
-            adjustsFontSizeToFit >
-            发送</Text>
-          </TouchableOpacity>
-        </View>
-        
-        <TextInput
-          style={styles.modalInput}
-          multiline
-          placeholder="在这里慢慢写，我会认真听..."
-          placeholderTextColor="#9CA3AF"
-          value={text}
-          onChangeText={onChangeText}
-          accessibilityLabel="写信给助手"
-          onKeyPress={Platform.OS === "web" ? sendOnEnter(onSend) : undefined}
-          autoFocus={true}
-          textAlignVertical="top"
-        />
-      </View>
-    </Modal>
-  )
-}
-
 // --- 5. 子组件：输入工具栏 ---
 const InputToolbar = ({ 
   inputText, 
@@ -278,12 +224,14 @@ const InputToolbar = ({
   
   return (
     <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <Text text="写长篇日记 · 仅本机保存" style={styles.journalHint} />
       <View style={styles.inputContainer}>
         {/* 展开按钮 */}
         <TouchableOpacity 
           onPress={onExpand} 
           accessibilityRole="button"
-          accessibilityLabel="展开输入区"
+          testID="chat-open-journal"
+          accessibilityLabel="写长篇日记，查看本机历史日记"
           style={styles.expandBtn}
           activeOpacity={0.6}
         >
@@ -298,6 +246,8 @@ const InputToolbar = ({
           placeholderTextColor="#9CA3AF"
           value={inputText}
           onChangeText={setInputText}
+          testID="chat-message-input"
+          maxLength={MAX_CHAT_LENGTH}
           accessibilityLabel="输入消息"
           onKeyPress={Platform.OS === "web" ? sendOnEnter(onSend) : undefined}
           onSubmitEditing={Platform.OS === "web" ? undefined : onSend}
@@ -310,6 +260,7 @@ const InputToolbar = ({
         <TouchableOpacity 
           onPress={onSend} 
           accessibilityRole="button"
+          testID="chat-send"
           accessibilityLabel="发送消息"
           disabled={loading || !inputText.trim()}
           style={[
@@ -339,6 +290,7 @@ export const AiChatScreen: FC<any> = ({ navigation }) => {
       key={storageKey}
       navigation={navigation}
       storageKey={storageKey}
+      journalKey={`here.journal.v1.${currentUser.id}`}
     />
   )
 }
@@ -346,13 +298,14 @@ export const AiChatScreen: FC<any> = ({ navigation }) => {
 const AiChatSession: FC<{
   navigation: any
   storageKey: string
-}> = ({ navigation, storageKey }) => {
+  journalKey: string
+}> = ({ navigation, storageKey, journalKey }) => {
   const { width, fontScale } = useViewport()
   const desktop = Platform.OS === "web" && width >= 980 && fontScale < 1.3
   const [inputText, setInputText] = useState("")
   const [loading, setLoading] = useState(false)
   const sending = useRef(false)
-  const [isExpandedMode, setExpandedMode] = useState(false) // 新增：控制全屏模式
+  const [journalOpen, setJournalOpen] = useState(false)
   
   const flatListRef = useRef<FlatList>(null)
   
@@ -380,44 +333,40 @@ useEffect(() => {
     }, 200)
   }
 
-  const handleSend = async () => {
-    if (!inputText.trim() || sending.current) return
+  const requestReply = async (history: Message[]) => {
+    if (sending.current) return
     sending.current = true
-
-    
-    setExpandedMode(false)
-
-    const userText = inputText.trim()
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: userText }
-
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
-    
-    const newHistory = [...messages, userMsg]
-    setMessages(newHistory)
-    setInputText("")
-    
     setLoading(true)
     scrollToEnd()
     if (Platform.OS !== "web") Keyboard.dismiss()
 
     try {
-      const data = await mobileApi.chat(
-        newHistory.filter(message => !message.isError).slice(-10)
-          .map(({ role, content }) => ({ role, content })),
-      )
+      // The local welcome message and failed replies aren't upstream conversation turns.
+      const recent = history.filter(message => !message.isError && message.id !== "init-1").slice(-10)
+      const firstUser = recent.findIndex(message => message.role === "user")
+      const context = recent.slice(Math.max(0, firstUser))
+        .map(({ role, content }) => ({ role, content: content.slice(0, MAX_CHAT_LENGTH) }))
+        .filter(message => message.content.trim())
+      const data = await mobileApi.chat(context)
+      if (typeof data.content !== "string" || !data.content.trim()) {
+        throw new Error("暖心助手暂时未返回有效内容，请重试。")
+      }
       const aiMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
+        id: String(Date.now() + 1),
+        role: "assistant",
         content: data.content,
         reasoningContent: data.reasoning_content ?? "",
       }
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
       setMessages(prev => [...prev, aiMsg])
     } catch (error) {
+      const message = error instanceof HereApiError && error.status === 500
+        ? "服务暂时异常（500），可以重试上一条消息。"
+        : getHereApiErrorMessage(error, "暖心助手暂时无法连接，请稍后重试。")
       setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: getHereApiErrorMessage(error, '暖心助手暂时无法连接，请稍后重试。'),
+        id: String(Date.now()),
+        role: "assistant",
+        content: message,
         isError: true,
       }])
     } finally {
@@ -427,6 +376,26 @@ useEffect(() => {
     }
   }
 
+  const handleSend = () => {
+    const userText = inputText.trim()
+    if (!userText || sending.current || userText.length > MAX_CHAT_LENGTH) return
+    const userMsg: Message = { id: String(Date.now()), role: "user", content: userText }
+    const history = [...messages.filter(message => !message.isError), userMsg]
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+    setMessages(history)
+    setInputText("")
+    void requestReply(history)
+  }
+
+  const handleRetry = () => {
+    if (sending.current || !messages[messages.length - 1]?.isError) return
+    const history = messages.filter(message => !message.isError)
+    if (history[history.length - 1]?.role !== "user") return
+    setMessages(history)
+    void requestReply(history)
+  }
+
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={THEME.bg} />
@@ -435,7 +404,7 @@ useEffect(() => {
         <View style={styles.aside}>
           <View style={styles.asideIcon}><Feather name="message-circle" size={25} color={ui.primary} /></View>
           <Text text="聊一聊" style={styles.asideTitle} />
-          <Text text="可以从今天的一件小事聊起。长一点的话，也可以展开输入区慢慢写。" style={styles.asideCopy} />
+          <Text text="可以从今天的一件小事聊起。想为自己留下一篇长文，也可以打开本机日记慢慢写。" style={styles.asideCopy} />
         </View>
       )}
       <View style={[styles.conversation, desktop && styles.desktopConversation]}>
@@ -481,6 +450,10 @@ useEffect(() => {
                    </Text>
                 </View>
               </View>
+            ) : messages[messages.length - 1]?.isError ? (
+              <TouchableOpacity testID="chat-retry" accessibilityRole="button" onPress={handleRetry} style={styles.retryAction}>
+                <Text text="重试上一条" style={styles.reasoningTitle} />
+              </TouchableOpacity>
             ) : <View style={{ height: 10 }} /> 
           }
         />
@@ -489,20 +462,24 @@ useEffect(() => {
           inputText={inputText} 
           setInputText={setInputText} 
           onSend={handleSend} 
-          onExpand={() => setExpandedMode(true)}
+          onExpand={() => setJournalOpen(true)}
           loading={loading} 
         />
       </KeyboardAvoidingView>
       </View>
       </View>
 
-      {/* 全屏写信模式 Modal */}
-      <ExpandedInputModal 
-        visible={isExpandedMode}
-        onClose={() => setExpandedMode(false)}
-        onSend={handleSend}
-        text={inputText}
-        onChangeText={setInputText}
+      <JournalModal
+        visible={journalOpen}
+        onClose={() => setJournalOpen(false)}
+        storageKey={journalKey}
+        chatLimit={MAX_CHAT_LENGTH}
+        onUseInChat={(text) => {
+          const combined = inputText.trim() ? inputText + "\n\n" + text : text
+          if (combined.length > MAX_CHAT_LENGTH) return false
+          setInputText(combined)
+          return true
+        }}
       />
     </View>
   )
@@ -520,6 +497,8 @@ const styles = StyleSheet.create({
   conversation: { flex: 1, minWidth: 0, minHeight: 0 },
   desktopConversation: { backgroundColor: ui.surface, borderColor: ui.line, borderWidth: 1, borderRadius: ui.radius.feature, overflow: "hidden" },
   keyHint: { color: ui.muted, fontSize: 12, marginTop: 7 },
+  journalHint: { color: ui.primary, fontSize: 12, lineHeight: 20, marginBottom: 6, paddingLeft: 4 },
+  retryAction: { alignSelf: "flex-start", marginHorizontal: 40, marginBottom: 12, borderWidth: 1, borderColor: ui.line, borderRadius: 999, paddingHorizontal: 15, paddingVertical: 10 },
   
   // Header
   header: {
@@ -627,20 +606,4 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  // Modal Styles (新)
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
-  },
-  modalInput: {
-    flex: 1,
-    padding: 20,
-    fontSize: 18,
-    color: THEME.textMain,
-    lineHeight: 28,
-  }
 })

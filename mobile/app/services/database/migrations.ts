@@ -159,6 +159,11 @@ const migrations: Migration[] = [
       `)
     },
   },
+  {
+    id: 5,
+    name: "add_student_birthday",
+    up: () => addColumnIfMissing("users", "birthday", "TEXT"),
+  },
 ]
 
 const ensureMigrationTable = () => {

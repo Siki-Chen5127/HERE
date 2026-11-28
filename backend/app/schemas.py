@@ -178,6 +178,8 @@ class MobileRegisterRequest(BaseModel):
 class MobileProfileUpdate(BaseModel):
     display_name: str = Field(min_length=1, max_length=100)
     college: str = Field(min_length=1, max_length=100)
+    student_number: str | None = Field(default=None, max_length=64)
+    class_name: str | None = Field(default=None, max_length=100)
 
 
 class MobileLoginRequest(BaseModel):
@@ -239,6 +241,48 @@ class MobileSafetyAnalysisRequest(BaseModel):
     alert_count: int = Field(ge=0, le=10000)
     night_trip_count: int = Field(ge=0, le=10000)
     active_hours: float = Field(ge=0, le=168)
+
+
+class ConsultationAppointmentRequest(BaseModel):
+    assignment_id: str | None = Field(default=None, min_length=1, max_length=36)
+    preferred_at: datetime
+    consent: Literal[True]
+
+
+class ConsultationAppointmentAction(BaseModel):
+    action: Literal["confirm", "reschedule", "complete"]
+
+
+class WeeklyMoodEntry(BaseModel):
+    day: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    mood: Literal["good", "okay", "tired"]
+
+
+class WeeklySurvey(BaseModel):
+    rest: str = Field(max_length=600)
+    stress: str = Field(max_length=600)
+    support: str = Field(max_length=600)
+
+
+class WeeklySupportSummary(BaseModel):
+    submitted: int = Field(ge=0, le=10000)
+    awaiting: int = Field(ge=0, le=10000)
+    followed_up: int = Field(ge=0, le=10000)
+    completed: int = Field(ge=0, le=10000)
+
+
+class WeeklyReflectionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    moods: list[WeeklyMoodEntry] = Field(max_length=7)
+    survey: WeeklySurvey | None = None
+    support: WeeklySupportSummary | None = None
+    night_context: dict[Literal["routine", "study", "travel", "other"], int] = Field(default_factory=dict)
+
+
+class WeeklyReflectionResponse(BaseModel):
+    score: int | None = Field(default=None, ge=0, le=100)
+    summary: str = Field(min_length=1, max_length=600)
+    model: str
 
 
 class MobileAiResponse(BaseModel):

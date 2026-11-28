@@ -19,6 +19,7 @@ export type UserRecord = {
   realName?: string | null
   gender?: string | null
   age?: string | null
+  birthday?: string | null
   bloodType?: string | null
   allergy?: string | null
   medicalHistory?: string | null

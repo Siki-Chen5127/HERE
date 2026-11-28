@@ -7,7 +7,7 @@ import { MapView, MapType, Marker } from "react-native-amap3d"
 import { AMapWebView } from "@/components/AMapWebView"
 import { Text } from "@/components/Text"
 import {HomeIcon as Icon,type IconTypes,} from "./components/HomeIcon"
-import { isAMapConfigured } from "@/services/amap"
+import { getAMapStaticMapUrl, isAMapConfigured } from "@/services/amap"
 import { HomeHeader } from "./components/HomeHeader"
 import { GlassSurface } from "./components/GlassSurface"
 import { SoftPressable } from "./components/SoftPressable"
@@ -60,6 +60,12 @@ export const StandardView = (props: StandardViewProps) => {
   const isWeb = Platform.OS === "web"
   const hasLocation =
     Number.isFinite(currentLocation?.latitude) && Number.isFinite(currentLocation?.longitude)
+  const [mapSize, setMapSize] = React.useState({ width: 640, height: 320 })
+  const staticMapUrl = isWeb && hasLocation ? getAMapStaticMapUrl(currentLocation, mapSize) : null
+  const [staticMapFailed, setStaticMapFailed] = React.useState(false)
+  const [staticMapRevision, setStaticMapRevision] = React.useState(0)
+  const [interactiveMapFailed, setInteractiveMapFailed] = React.useState(false)
+  React.useEffect(() => { setStaticMapFailed(false) }, [staticMapUrl])
 
   const moveMapToCurrentLocation = React.useCallback(() => {
     const latitude = currentLocation?.latitude
@@ -176,8 +182,10 @@ export const StandardView = (props: StandardViewProps) => {
           {!largeText && <View style={styles.shortcutDivider} />}
           {shortcut("我的求助", "mood", upcomingProgress)}
         </View>
-        <View style={[styles.shortcuts, styles.lastShortcut]}>
+        <View style={[styles.shortcuts, styles.lastShortcut, largeText && styles.stack]}>
           {shortcut("近况与休息", "mood", () => navigation.navigate("Support", { section: "wellbeing" }))}
+          {!largeText && <View style={styles.shortcutDivider} />}
+          {shortcut("心理预约", "write", () => navigation.navigate("Support", { section: "consultation" }))}
         </View>
         </View>
 
@@ -190,18 +198,26 @@ export const StandardView = (props: StandardViewProps) => {
         <GlassSurface contentStyle={styles.mapFrame}>
           <View style={styles.mapClip}>
             <View
+              testID="home-map-area"
               style={styles.mapArea}
-              onTouchStart={() => setScrollEnabled(false)}
+              onLayout={({ nativeEvent: { layout } }) => {
+                if (layout.width > 0 && layout.height > 0) {
+                  const width = Math.round(layout.width), height = Math.round(layout.height)
+                  setMapSize(current => current.width === width && current.height === height ? current : { width, height })
+                }
+              }}
+              onTouchStart={() => { if (mapConfigured && (!isWeb || !interactiveMapFailed)) setScrollEnabled(false) }}
               onTouchEnd={() => setScrollEnabled(true)}
               onTouchCancel={() => setScrollEnabled(true)}
             >
-              {mapConfigured && hasLocation ? (
+              {mapConfigured && hasLocation && (!isWeb || !interactiveMapFailed) ? (
                 isWeb ? (
                   <AMapWebView
                     ref={mapRef}
                     center={currentLocation}
                     zoom={16}
                     markers={[currentLocation]}
+                    onUnavailable={() => setInteractiveMapFailed(true)}
                     style={styles.map}
                   />
                 ) : (
@@ -218,14 +234,32 @@ export const StandardView = (props: StandardViewProps) => {
                   <Marker position={currentLocation} />
                   </MapView>
                 )
+              ) : staticMapUrl && !staticMapFailed ? (
+                <Image
+                  key={staticMapRevision}
+                  testID="home-static-map"
+                  accessibilityLabel="当前位置高德地图预览"
+                  source={{ uri: staticMapUrl }}
+                  resizeMode="stretch"
+                  style={styles.staticMap}
+                  onError={() => setStaticMapFailed(true)}
+                />
               ) : (
                 <View style={styles.mapPlaceholder}>
                   <Icon icon="location" size={28} color={C.primary} />
                   <Text
-                    text={!hasLocation ? locationName : "地图暂时不可用"}
+                    text={!hasLocation ? locationName : staticMapFailed ? "地图图片加载失败" : interactiveMapFailed ? "地图服务暂时不可用" : "地图服务尚未配置"}
                     style={styles.placeholderText}
                     accessibilityLiveRegion="polite"
                   />
+                  {staticMapFailed && staticMapUrl && (
+                    <SoftPressable accessibilityRole="button" style={styles.locationAction} onPress={() => {
+                      setStaticMapFailed(false)
+                      setStaticMapRevision(value => value + 1)
+                    }}>
+                      <Text text="重试地图" style={styles.locationActionText} />
+                    </SoftPressable>
+                  )}
                   {isWeb && !hasLocation && (
                     <SoftPressable
                       testID="home-request-location"
@@ -296,15 +330,6 @@ export const StandardView = (props: StandardViewProps) => {
             </View>
           </SoftPressable>
         </View>
-        <View style={styles.followUp}>
-          <View style={styles.followUpHeading}>
-            <Text text="后续安排" style={styles.followUpTitle} />
-          </View>
-          <Text
-            text="在「我的求助」查看辅导员回复和后续安排。"
-            style={styles.followUpDescription}
-          />
-        </View>
         </View>
         </View>
         {desktop && <HomeActivity userId={currentUser?.id ?? null} revision={moodRevision} onProgress={upcomingProgress} />}
@@ -332,9 +357,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   desktopChatContent: { minHeight: 260, paddingHorizontal: 33 },
-  chatText: { alignItems: "flex-start" },
-  chatTitle: { fontSize: 31, lineHeight: 40, fontWeight: "700", color: "#2c4737" },
-  chatDescription: { fontSize: 14, lineHeight: 22, color: "#415644", marginTop: 7 },
+  chatText: { alignItems: "center" },
+  chatTitle: { fontSize: 31, lineHeight: 40, fontWeight: "700", color: "#2c4737", textAlign: "center" },
+  chatDescription: { fontSize: 14, lineHeight: 22, color: "#415644", marginTop: 7, textAlign: "center" },
   chatPill: { backgroundColor: "#345b45", flexDirection: "row", gap: 7, alignItems: "center",
     minHeight: 44, paddingHorizontal: 15, borderRadius: 24, marginTop: 16 },
   chatPillText: { color: "#fffaf0", fontSize: 14, fontWeight: "600" },
@@ -361,8 +386,9 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 20, lineHeight: 29, fontWeight: "600", color: C.text },
   mapFrame: { padding: 5 },
   mapClip: { overflow: "hidden", borderRadius: ui.radius.nested },
-  mapArea: { height: 164, backgroundColor: "#E5EBDB" },
+  mapArea: { height: 187, backgroundColor: "#E5EBDB" },
   map: { flex: 1 },
+  staticMap: { width: "100%", height: "100%" },
   mapPlaceholder: { flex: 1, alignItems: "center", justifyContent: "center", padding: 20 },
   placeholderText: {
     fontSize: 14, lineHeight: 22, color: C.secondary, marginTop: 8, textAlign: "center",
@@ -406,14 +432,5 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   dangerText: { color: C.danger },
-  followUp: { borderTopWidth: 1, borderTopColor: C.line, paddingTop: 15, paddingHorizontal: 3 },
-  followUpHeading: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-    marginBottom: 5,
-  },
-  followUpTitle: { fontSize: 14, lineHeight: 22, fontWeight: "500", color: C.text },
-  followUpDescription: { fontSize: 12, lineHeight: 20, color: C.secondary },
   stack: { flexDirection: "column", alignItems: "stretch" },
 })

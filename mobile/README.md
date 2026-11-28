@@ -137,7 +137,21 @@ EXPO_PUBLIC_AMAP_WEB_KEY=
 
 默认本地 API 为 `http://127.0.0.1:8000/api/v1`。AI 对话还需要在**后端环境文件**中配置模型服务密钥和模型名称。
 
-### 4. 连接设备并运行
+### 4. 在本机启动学生网页版
+
+后端启动后，在 `mobile/` 下运行：
+
+```powershell
+npm.cmd run web
+```
+
+打开终端中 `Student web:` 提示的地址（默认 `http://127.0.0.1:8081/`）。本地启动脚本会配置浏览器版 SQLite 所需的响应头，并把同一站点的 `/api/v1` 请求转发到本机的 8000 端口。电脑上已有服务占用 8081 时，可以用 `npm.cmd run web -- --port 8082`。后端使用其他端口时，加 `--api-port 端口号`，或在 `mobile/.env.local` 中配置 `HERE_LOCAL_API_PORT`。
+
+### 比赛演示账号与网页地图
+
+在构建机器的 `mobile/.env.local` 中设置 `EXPO_PUBLIC_DEMO_STUDENT_PHONE` 和 `EXPO_PUBLIC_DEMO_STUDENT_PASSWORD` 后，开发版和生产版登录页都会显示演示填充按钮。两者都是公开演示信息，必须使用后端已有的专用虚构账号。未配置时不显示入口。高德网页 JS API 优先使用 `EXPO_PUBLIC_AMAP_JS_KEY`；首页没有可用交互地图时可用 `EXPO_PUBLIC_AMAP_WEB_KEY` 获取静态预览。正式发布时在构建环境填写自己的配置。
+
+### 5. 连接 Android 设备并运行
 
 USB 调试时，可先检查设备并映射后端端口：
 

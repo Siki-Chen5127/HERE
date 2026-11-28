@@ -3,12 +3,26 @@ import { showSuccess } from '../components/SuccessFeedback'
 import { useState } from 'react'
 import { authApi, getApiErrorMessage } from '../services/api'
 
-const demoAccounts = [
-  { label: '辅导员', email: 'counselor@here.edu', password: 'Counselor123!' },
-  { label: '心理咨询师', email: 'psychologist@here.edu', password: 'Psychologist123!' },
-  { label: '中心负责人', email: 'director@here.edu', password: 'Director123!' },
-  { label: '管理员', email: 'admin@here.edu', password: 'ChangeMe123!' },
-]
+// VITE_* values are public in the browser. Only opt into all four roles
+// when the backend is connected to a dedicated fictional contest database.
+const demoEnabled = import.meta.env.DEV || import.meta.env.VITE_CONTEST_DEMO_MODE === 'true'
+const configuredDemos = demoEnabled ? [
+  { label: '辅导员', email: import.meta.env.VITE_DEMO_COUNSELOR_EMAIL, password: import.meta.env.VITE_DEMO_COUNSELOR_PASSWORD },
+  { label: '心理咨询师', email: import.meta.env.VITE_DEMO_PSYCHOLOGIST_EMAIL, password: import.meta.env.VITE_DEMO_PSYCHOLOGIST_PASSWORD },
+  { label: '中心负责人', email: import.meta.env.VITE_DEMO_DIRECTOR_EMAIL, password: import.meta.env.VITE_DEMO_DIRECTOR_PASSWORD },
+  { label: '管理员', email: import.meta.env.VITE_DEMO_ADMIN_EMAIL, password: import.meta.env.VITE_DEMO_ADMIN_PASSWORD },
+].filter(account => account.email?.trim() && account.password).map(account => ({ ...account, email: account.email.trim() })) : []
+
+const demoAccounts = import.meta.env.DEV
+  ? [
+      ...configuredDemos,
+      ...[
+        { label: '心理咨询师', email: 'psychologist@here.edu', password: 'Psychologist123!' },
+        { label: '中心负责人', email: 'director@here.edu', password: 'Director123!' },
+        { label: '管理员', email: 'admin@here.edu', password: 'ChangeMe123!' },
+      ].filter(account => !configuredDemos.some(configured => configured.label === account.label)),
+    ]
+  : import.meta.env.VITE_CONTEST_DEMO_MODE === 'true' ? configuredDemos : []
 
 export default function LoginPage({ onLogin }) {
   const initialResetToken = new URLSearchParams(window.location.search).get('reset_token') || ''
@@ -229,9 +243,9 @@ export default function LoginPage({ onLogin }) {
                   申请工作人员账号
                 </button>
 
-                {import.meta.env.DEV && (
+                {demoAccounts.length > 0 && (
               <div className="mt-6 border-t border-slate-200 pt-5">
-                <p className="mb-2 text-xs font-medium text-slate-500">本地演示账号</p>
+                <p className="mb-2 text-xs font-medium text-slate-500">演示账号</p>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {demoAccounts.map((account) => (
                     <button

@@ -48,7 +48,7 @@ export type MainStackParamList = {
   Trajectory: undefined
   ProfileEdit: undefined
   AiChat: undefined
-  Support: { section?: "request" | "progress" | "wellbeing" } | undefined
+  Support: { section?: "request" | "progress" | "wellbeing" | "consultation" } | undefined
   SosAlert: undefined 
   RescueCheck: { rehearsal?: boolean } | undefined
   FallAlert: undefined

@@ -32,6 +32,7 @@ interface AMapWebViewProps {
   circles?: AMapCircleOptions[]
   polyline?: AMapCoordinate[]
   onPress?: (coordinate: AMapCoordinate) => void
+  onUnavailable?: () => void
   gesturesEnabled?: boolean
   style?: StyleProp<ViewStyle>
 }
@@ -82,6 +83,7 @@ export const AMapWebView = forwardRef<AMapWebViewHandle, AMapWebViewProps>(
       circles = [],
       polyline = [],
       onPress,
+      onUnavailable,
       gesturesEnabled = true,
       style,
     },
@@ -93,6 +95,8 @@ export const AMapWebView = forwardRef<AMapWebViewHandle, AMapWebViewProps>(
     const [mapReady, setMapReady] = useState(false)
     const [loadError, setLoadError] = useState<string | null>(null)
     onPressRef.current = onPress
+
+    useEffect(() => { if (loadError) onUnavailable?.() }, [loadError, onUnavailable])
 
     const serviceHost =
       AMAP_SERVICE_HOST ||
