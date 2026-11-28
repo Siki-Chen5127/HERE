@@ -1,0 +1,6 @@
+# Local demo-only configuration
+.env.development.local
+.env
+.env.*
+!.env.example
+.expo/

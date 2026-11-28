@@ -12,3 +12,5 @@ npm run dev
 ```
 
 开发 API 地址通过 `.env.local` 中的 `VITE_API_URL` 设置，参考 `.env.example`。
+
+比赛演示构建可在 .env.local 中配置 VITE_DEMO_COUNSELOR_EMAIL 和 VITE_DEMO_COUNSELOR_PASSWORD。配置后正式登录页展示辅导员快捷填充入口，其余开发示例角色仍只在开发环境可见。请仅使用隔离的演示辅导员和虚构学生数据。

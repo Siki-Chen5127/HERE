@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#426b52",
     borderColor: "rgba(255,255,255,0.75)",
   },
-  title: { color: C.text, fontSize: 17, fontWeight: "600", marginBottom: 9, marginLeft: 9 },
+  title: { color: C.text, fontSize: 17, fontWeight: "600", marginBottom: 9, textAlign: "center" },
   label: {
     fontSize: 16,
     lineHeight: 24,

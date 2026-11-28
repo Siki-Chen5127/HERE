@@ -3,11 +3,18 @@ import { showSuccess } from '../components/SuccessFeedback'
 import { useState } from 'react'
 import { authApi, getApiErrorMessage } from '../services/api'
 
+const counselorEmail = import.meta.env.VITE_DEMO_COUNSELOR_EMAIL?.trim()
+const counselorPassword = import.meta.env.VITE_DEMO_COUNSELOR_PASSWORD
+
 const demoAccounts = [
-  { label: '辅导员', email: 'counselor@here.edu', password: 'Counselor123!' },
-  { label: '心理咨询师', email: 'psychologist@here.edu', password: 'Psychologist123!' },
-  { label: '中心负责人', email: 'director@here.edu', password: 'Director123!' },
-  { label: '管理员', email: 'admin@here.edu', password: 'ChangeMe123!' },
+  ...(counselorEmail && counselorPassword ? [
+    { label: '辅导员', email: counselorEmail, password: counselorPassword },
+  ] : []),
+  ...(import.meta.env.DEV ? [
+    { label: '心理咨询师', email: 'psychologist@here.edu', password: 'Psychologist123!' },
+    { label: '中心负责人', email: 'director@here.edu', password: 'Director123!' },
+    { label: '管理员', email: 'admin@here.edu', password: 'ChangeMe123!' },
+  ] : []),
 ]
 
 export default function LoginPage({ onLogin }) {
@@ -229,9 +236,9 @@ export default function LoginPage({ onLogin }) {
                   申请工作人员账号
                 </button>
 
-                {import.meta.env.DEV && (
+                {demoAccounts.length > 0 && (
               <div className="mt-6 border-t border-slate-200 pt-5">
-                <p className="mb-2 text-xs font-medium text-slate-500">本地演示账号</p>
+                <p className="mb-2 text-xs font-medium text-slate-500">演示账号</p>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {demoAccounts.map((account) => (
                     <button

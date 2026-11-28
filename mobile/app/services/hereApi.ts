@@ -44,6 +44,8 @@ export type MobileProfile = {
   displayName: string
   phone: string
   college: string | null
+  studentNumber: string | null
+  className: string | null
 }
 
 export type SupportRequest = {
@@ -65,6 +67,22 @@ export type MobileAiResponse = {
   model: string
   reasoning_content?: string
 }
+
+export type Consultation = {
+  id: string; psychologist: string; status: string; scheduledAt: string | null;
+  referred: boolean; updatedAt: string | null;
+}
+export type ConsultationAvailability = {
+  day: string
+  slots: { hour: number; startsAt: string; available: boolean; state: "available" | "occupied" | "unavailable" | "past" }[]
+}
+export type WeeklyReflectionInput = {
+  moods: { day: string; mood: "good" | "okay" | "tired" }[]
+  survey: { rest: string; stress: string; support: string } | null
+  support: { submitted: number; awaiting: number; followed_up: number; completed: number } | null
+  night_context: Partial<Record<"routine" | "study" | "travel" | "other", number>>
+}
+export type WeeklyReflection = { score: number | null; summary: string; model: string }
 
 export class HereApiError extends Error {
   status?: number
@@ -123,7 +141,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     headers.set("Authorization", `Bearer ${token}`)
   }
 
-  const isAiChat = path === "/mobile/ai/chat"
+  const isAiChat = path === "/mobile/ai/chat" || path === "/mobile/ai/weekly-reflection" || path === "/mobile/ai/safety-analysis"
   const timeout = setTimeout(() => controller.abort(), isAiChat ? 150000 : 15000)
   try {
     const response = await fetch(`${Config.HERE_API_URL.replace(/\/+$/, "")}${path}`, {
@@ -185,6 +203,25 @@ export const studentAuthApi = {
 }
 
 export const mobileApi = {
+  getConsultations() {
+    return request<Consultation[]>("/mobile/consultations", { authenticated: true })
+  },
+  getConsultationAvailability(day: string, assignmentId?: string) {
+    const query = new URLSearchParams({ day })
+    if (assignmentId) query.set("assignment_id", assignmentId)
+    return request<ConsultationAvailability>("/mobile/consultations/availability?" + query.toString(), { authenticated: true })
+  },
+  requestAppointment(preferredAt: string, assignmentId?: string) {
+    return request<Consultation>("/mobile/consultations/appointments", {
+      method: "POST", authenticated: true,
+      body: JSON.stringify({ preferred_at: preferredAt, assignment_id: assignmentId ?? null, consent: true }),
+    })
+  },
+  cancelAppointment(id: string) {
+    return request<Consultation>("/mobile/consultations/" + encodeURIComponent(id) + "/cancel", {
+      method: "POST", authenticated: true,
+    })
+  },
   getSupportRequests() {
     return request<SupportRequest[]>("/mobile/support-requests", { authenticated: true })
   },
@@ -193,8 +230,8 @@ export const mobileApi = {
     return request<MobileProfile>("/mobile/profile", { authenticated: true })
   },
 
-  updateProfile(payload: { display_name: string; college: string }) {
-    return request<{ status: string; displayName: string; college: string }>("/mobile/profile", {
+  updateProfile(payload: { display_name: string; college: string; student_number?: string | null; class_name?: string | null }) {
+    return request<{ status: string; displayName: string; college: string; studentNumber: string | null; className: string | null }>("/mobile/profile", {
       method: "PATCH",
       authenticated: true,
       body: JSON.stringify(payload),
@@ -214,6 +251,12 @@ export const mobileApi = {
       method: "POST",
       authenticated: true,
       body: JSON.stringify({ messages }),
+    })
+  },
+
+  createWeeklyReflection(payload: WeeklyReflectionInput) {
+    return request<WeeklyReflection>("/mobile/ai/weekly-reflection", {
+      method: "POST", authenticated: true, body: JSON.stringify(payload),
     })
   },
 

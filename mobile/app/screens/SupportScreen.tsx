@@ -6,11 +6,12 @@ import { feedback, Alert } from "@/components/Feedback"
 import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
 import { SupportProgress, supportTime } from "@/components/SupportProgress"
+import { ConsultationAppointments } from "@/components/ConsultationAppointments"
 import { studentFrame, studentUi as ui } from "@/theme/studentUi"
 import { useViewport } from "@/utils/useViewport"
 import { useAuth } from "@/context/AuthContext"
 import { createClientEventId } from "@/services/alertSync"
-import { getHereApiErrorMessage, mobileApi, type SupportRequest } from "@/services/hereApi"
+import { getHereApiErrorMessage, HereApiError, mobileApi, type SupportRequest } from "@/services/hereApi"
 import { load, save } from "@/utils/storage"
 
 import { homeColors as C } from "./MainScreen/components/homeAppearance"
@@ -21,7 +22,7 @@ const emptySurvey = { rest: "", stress: "", support: "", lastSaved: 0, reminder:
 
 export function SupportScreen({ navigation, route }: {
   navigation: { goBack(): void }
-  route: { params?: { section?: "request" | "progress" | "wellbeing" } }
+  route: { params?: { section?: "request" | "progress" | "wellbeing" | "consultation" } }
 }) {
   const { currentUser } = useAuth()
   const { width, fontScale } = useViewport()
@@ -45,7 +46,9 @@ export function SupportScreen({ navigation, route }: {
       const result = await mobileApi.getSupportRequests()
       if (token === progressLoad.current) setOrders(result)
     } catch (error) {
-      if (token === progressLoad.current) setProgressError(getHereApiErrorMessage(error))
+      if (token === progressLoad.current) setProgressError(error instanceof HereApiError && error.status === 404
+        ? "当前后端尚未提供求助进度服务，请更新后端后重试。"
+        : getHereApiErrorMessage(error))
     }
   }, [])
 
@@ -93,9 +96,9 @@ export function SupportScreen({ navigation, route }: {
     feedback.success(title)
   }
 
-  const action = (label: string, run: () => void, disabled = false) => (
+  const action = (label: string, run: () => void, disabled = false, centered = false) => (
     <SoftPressable onPress={run} disabled={disabled} accessibilityRole="button" accessibilityState={{ disabled }}
-      style={[styles.actionWrap, disabled && styles.disabled]}>
+      style={[styles.actionWrap, centered && styles.centerAction, disabled && styles.disabled]}>
       <View style={styles.action}><Text text={label} style={styles.actionLabel} /></View>
     </SoftPressable>
   )
@@ -108,7 +111,7 @@ export function SupportScreen({ navigation, route }: {
       </Pressable>
       <Text text="校园关怀" style={styles.title} />
       <View style={styles.tabs}>
-        {([["request", "联系辅导员"], ["progress", "我的求助"], ["wellbeing", "近况与休息"]] as const).map(([value, label]) => (
+        {([["request", "联系辅导员"], ["progress", "我的求助"], ["wellbeing", "近况与休息"], ["consultation", "心理预约"]] as const).map(([value, label]) => (
           <SoftPressable key={value} accessibilityRole="tab" accessibilityState={{ selected: section === value }}
             onPress={() => setSection(value)} style={[styles.tab, section === value && styles.activeTab]}>
             <Text text={label} style={styles.tabText} />
@@ -127,7 +130,7 @@ export function SupportScreen({ navigation, route }: {
             <View style={styles.switchText}><Text text="我同意将以上内容发送给辅导员" style={styles.label} /></View>
             <Switch accessibilityLabel="同意将以上内容发送给辅导员" value={consent} onValueChange={setConsent} disabled={sending} />
           </View>
-          {action(sending ? "正在提交…" : "提交关怀请求", () => void send(), sending || !consent || !message.trim())}
+          {action(sending ? "正在提交…" : "提交关怀请求", () => void send(), sending || !consent || !message.trim(), true)}
           </View>
           <View style={[styles.aside, desktop && styles.asideWide]}>
             <Text text="分享范围" style={styles.sectionTitle} />
@@ -158,6 +161,8 @@ export function SupportScreen({ navigation, route }: {
             ))}
         </>
       )}
+
+      {section === "consultation" && <ConsultationAppointments />}
 
       {section === "wellbeing" && (
         <View style={desktop && styles.split}>
@@ -215,11 +220,11 @@ const styles = StyleSheet.create({
   content: { width: "100%", maxWidth: 720, alignSelf: "center", paddingHorizontal: 22, paddingTop: 18, paddingBottom: 42 },
   back: { minHeight: 44, justifyContent: "center", alignSelf: "flex-start", paddingRight: 12 },
   backText: { color: C.primary, fontWeight: "700", fontSize: 16 },
-  title: { color: C.text, fontSize: 34, lineHeight: 43, fontWeight: "700" },
-  tabs: { flexDirection: "row", flexWrap: "wrap", gap: 6, borderBottomWidth: 1, borderColor: C.line, marginVertical: 15, paddingBottom: 8 },
+  title: { color: C.text, fontSize: 34, lineHeight: 43, fontWeight: "700", textAlign: "center" },
+  tabs: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: 6, borderBottomWidth: 1, borderColor: C.line, marginVertical: 15, paddingBottom: 8 },
   tab: { borderRadius: 21, paddingVertical: 12, paddingHorizontal: 11 },
   activeTab: { backgroundColor: "#e0e9d8" },
-  tabText: { color: C.text, fontWeight: "600", fontSize: 14 },
+  tabText: { color: C.text, fontWeight: "600", fontSize: 14, textAlign: "center" },
   description: { color: C.secondary, marginVertical: 8, fontSize: 15, lineHeight: 24 },
   field: { paddingBottom: 8 },
   label: { color: C.text, fontWeight: "600", fontSize: 15 },
@@ -229,6 +234,7 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 48, marginVertical: 5 },
   switchText: { flex: 1 },
   actionWrap: { alignSelf: "flex-start", marginVertical: 6, borderRadius: 24, backgroundColor: "#325b44" },
+  centerAction: { alignSelf: "center" },
   action: { minHeight: 44, justifyContent: "center", paddingHorizontal: 17 },
   actionLabel: { color: "#fffdf4", fontWeight: "700", fontSize: 15 },
   disabled: { opacity: 0.48 },

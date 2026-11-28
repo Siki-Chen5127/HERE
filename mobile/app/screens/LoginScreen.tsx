@@ -30,6 +30,11 @@ import { getHereApiErrorMessage, studentAuthApi } from "@/services/hereApi"
 import { useViewport } from "@/utils/useViewport"
 
 type Mode = "login" | "register"
+
+// Contest builds can opt in to the shortcut using a dedicated public demo account.
+const DEMO_PHONE = process.env.EXPO_PUBLIC_DEMO_STUDENT_PHONE?.trim() ?? ""
+const DEMO_PASSWORD = process.env.EXPO_PUBLIC_DEMO_STUDENT_PASSWORD ?? ""
+const hasDemoAccount = Boolean(DEMO_PHONE && DEMO_PASSWORD)
 const FORM_COLORS = {
   brandLine: "rgba(69,104,75,0.3)",
   switchBackground: "rgba(215,225,207,0.55)",
@@ -173,6 +178,16 @@ export const LoginScreen: FC<AppStackScreenProps<"Login">> = ({ navigation }) =>
     setErrors({})
     setFormError("")
     setPasswordVisible(false)
+  }
+
+  const fillDemoAccount = () => {
+    if (submitting.current || !hasDemoAccount || mode !== "login") return
+    Keyboard.dismiss()
+    setPhone(DEMO_PHONE)
+    setPassword(DEMO_PASSWORD)
+    setPasswordVisible(false)
+    setErrors({})
+    setFormError("")
   }
 
   async function handleSubmit() {
@@ -443,18 +458,35 @@ export const LoginScreen: FC<AppStackScreenProps<"Login">> = ({ navigation }) =>
             />
 
             {mode === "login" && (
-              <SoftPressable
-                testID="forgot-password-btn"
-                accessibilityRole="button"
-                accessibilityLabel="忘记密码"
-                disabled={loading}
-                onPress={() => navigation.navigate("ForgotPassword", { phone: phone.trim() })}
-                style={styles.forgotWrapper}
-              >
-                <View style={styles.forgotButton}>
-                  <Text text="忘记密码？" style={styles.linkText} />
-                </View>
-              </SoftPressable>
+              <View style={styles.loginActions}>
+                {hasDemoAccount && (
+                  <SoftPressable
+                    testID="fill-demo-account"
+                    accessibilityRole="button"
+                    accessibilityLabel="填入演示账号"
+                    accessibilityState={{ disabled: loading }}
+                    disabled={loading}
+                    onPress={fillDemoAccount}
+                  >
+                    <View style={styles.demoButton}>
+                      <Feather name="user-check" size={16} color={C.primary} accessible={false} />
+                      <Text text="填入演示账号" style={styles.linkText} />
+                    </View>
+                  </SoftPressable>
+                )}
+                <SoftPressable
+                  testID="forgot-password-btn"
+                  accessibilityRole="button"
+                  accessibilityLabel="忘记密码"
+                  disabled={loading}
+                  onPress={() => navigation.navigate("ForgotPassword", { phone: phone.trim() })}
+                  style={styles.forgotWrapper}
+                >
+                  <View style={styles.forgotButton}>
+                    <Text text="忘记密码？" style={styles.linkText} />
+                  </View>
+                </SoftPressable>
+              </View>
             )}
 
             {!!formError && (
@@ -577,7 +609,25 @@ const styles = StyleSheet.create({
   field: { marginBottom: 18 },
   fieldError: { color: C.danger, fontSize: 12, lineHeight: 20, marginHorizontal: 3, marginTop: 6 },
   forgotButton: { justifyContent: "center", minHeight: 44, paddingHorizontal: 3 },
-  forgotWrapper: { alignSelf: "flex-end", marginBottom: 5, marginTop: -12 },
+  forgotWrapper: { marginLeft: "auto" },
+  loginActions: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 5,
+    marginTop: -12,
+  },
+  demoButton: {
+    alignItems: "center",
+    backgroundColor: FORM_COLORS.switchBackground,
+    borderRadius: 999,
+    flexDirection: "row",
+    gap: 6,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
   form: { borderRadius: 28, padding: 22 },
   formError: {
     alignItems: "flex-start",

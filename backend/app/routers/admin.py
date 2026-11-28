@@ -7,6 +7,7 @@ from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
+from ..appointments import appointment_write_lock, occupied_psychologist_ids
 from ..database import get_db
 from ..dependencies import get_current_staff, require_staff_roles
 from ..models import (
@@ -23,6 +24,7 @@ from ..models import (
     WorkOrder,
 )
 from ..schemas import (
+    ConsultationAppointmentAction,
     StaffCreateRequest,
     StaffAccountCloseRequest,
     StaffReviewScopesRequest,
@@ -55,6 +57,9 @@ AUDIT_ACTION_LABELS = {
     "work_order.resolve": "完成预警工单",
     "work_order.student_update": "向学生发送工单进度",
     "work_order.student_receive": "接收学生求助",
+    "consultation.confirm": "确认咨询预约",
+    "consultation.reschedule": "请求重新安排咨询时间",
+    "consultation.complete": "完成自主预约咨询",
     "knowledge.create": "新建知识资料草稿",
     "knowledge.update": "修改知识资料",
     "knowledge.file_replace": "替换知识资料文件",
@@ -164,7 +169,7 @@ def get_available_psychologists(
     _staff: StaffUser = Depends(require_staff_roles("counselor")),
     session: Session = Depends(get_db),
 ) -> list[dict]:
-    active_assignment = ConsultationAssignment.status.in_(("assigned", "scheduled", "active"))
+    active_assignment = ConsultationAssignment.status.in_(("assigned", "appointment_requested", "scheduled", "active"))
     rows = session.execute(
         select(
             StaffUser.id,
@@ -339,54 +344,57 @@ def resolve_work_order(
     staff: StaffUser = Depends(get_current_staff),
     session: Session = Depends(get_db),
 ) -> dict[str, str]:
-    statement = (
-        select(WorkOrder)
-        .join(Alert, WorkOrder.alert_id == Alert.id)
-        .where(WorkOrder.id == order_id)
-    )
-    work_order = session.scalar(_work_order_scope(statement, staff))
-    if work_order is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="工单不存在或无权处理")
-    if staff.role == "counselor" and work_order.assignee_id not in (None, staff.id):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="该工单已转介心理咨询师，请等待咨询师完成处置",
+    with appointment_write_lock(session):
+        statement = (
+            select(WorkOrder)
+            .join(Alert, WorkOrder.alert_id == Alert.id)
+            .where(WorkOrder.id == order_id)
         )
+        work_order = session.scalar(_work_order_scope(statement, staff))
+        if work_order is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="工单不存在或无权处理")
+        if staff.role == "counselor" and work_order.assignee_id not in (None, staff.id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="该工单已转介心理咨询师，请等待咨询师完成处置",
+            )
 
-    if work_order.status == "resolved":
+        if work_order.status == "resolved":
+            return {"status": "success"}
+        work_order.status = "resolved"
+        work_order.resolution_note = payload.note.strip() or None
+        work_order.resolved_at = datetime.now(timezone.utc)
+        alert = session.get(Alert, work_order.alert_id)
+        if alert:
+            alert.status = "resolved"
+        assignment = session.scalar(
+            select(ConsultationAssignment).where(
+                ConsultationAssignment.work_order_id == work_order.id
+            )
+        )
+        if assignment:
+            if assignment.status == "appointment_requested":
+                assignment.scheduled_at = None
+            assignment.status = "completed"
+        session.add(
+            Intervention(
+                work_order_id=work_order.id,
+                staff_user_id=staff.id,
+                action_type="resolve",
+                note=work_order.resolution_note,
+            )
+        )
+        session.add(
+            AuditLog(
+                actor_type="staff",
+                actor_id=staff.id,
+                action="work_order.resolve",
+                resource_type="work_order",
+                resource_id=work_order.id,
+            )
+        )
+        session.commit()
         return {"status": "success"}
-    work_order.status = "resolved"
-    work_order.resolution_note = payload.note.strip() or None
-    work_order.resolved_at = datetime.now(timezone.utc)
-    alert = session.get(Alert, work_order.alert_id)
-    if alert:
-        alert.status = "resolved"
-    assignment = session.scalar(
-        select(ConsultationAssignment).where(
-            ConsultationAssignment.work_order_id == work_order.id
-        )
-    )
-    if assignment:
-        assignment.status = "completed"
-    session.add(
-        Intervention(
-            work_order_id=work_order.id,
-            staff_user_id=staff.id,
-            action_type="resolve",
-            note=work_order.resolution_note,
-        )
-    )
-    session.add(
-        AuditLog(
-            actor_type="staff",
-            actor_id=staff.id,
-            action="work_order.resolve",
-            resource_type="work_order",
-            resource_id=work_order.id,
-        )
-    )
-    session.commit()
-    return {"status": "success"}
 
 
 @router.get("/dashboard")
@@ -471,7 +479,7 @@ def get_dashboard(
         active_cases = session.scalar(
             select(func.count()).select_from(ConsultationAssignment).where(
                 ConsultationAssignment.psychologist_id == staff.id,
-                ConsultationAssignment.status.in_(("assigned", "scheduled", "active")),
+                ConsultationAssignment.status.in_(("assigned", "appointment_requested", "scheduled", "active")),
             )
         )
         consented_cases = session.scalar(
@@ -510,7 +518,7 @@ def get_dashboard(
         )
         active_cases = session.scalar(
             select(func.count()).select_from(ConsultationAssignment).where(
-                ConsultationAssignment.status.in_(("assigned", "scheduled", "active"))
+                ConsultationAssignment.status.in_(("assigned", "appointment_requested", "scheduled", "active"))
             )
         )
         active_psychologists = session.scalar(
@@ -541,7 +549,7 @@ def get_dashboard(
         )
         active_cases = session.scalar(
             select(func.count()).select_from(ConsultationAssignment).where(
-                ConsultationAssignment.status.in_(("assigned", "scheduled", "active"))
+                ConsultationAssignment.status.in_(("assigned", "appointment_requested", "scheduled", "active"))
             )
         )
         return {
@@ -612,12 +620,54 @@ def get_consultations(
             "college": profile.college if profile else None,
             "className": profile.class_name if profile else None,
             "status": assignment.status,
-            "scheduledAt": assignment.scheduled_at.isoformat() if assignment.scheduled_at else None,
+            "scheduledAt": assignment.scheduled_at.replace(tzinfo=assignment.scheduled_at.tzinfo or timezone.utc).isoformat() if assignment.scheduled_at else None,
+            "referred": assignment.work_order_id is not None,
             "consentGranted": assignment.consent_granted_at is not None,
             "updatedAt": assignment.updated_at.isoformat(),
         }
         for assignment, student, profile in rows
     ]
+
+
+@router.patch("/consultations/{assignment_id}/appointment")
+def update_consultation_appointment(
+    assignment_id: str,
+    payload: ConsultationAppointmentAction,
+    staff: StaffUser = Depends(require_staff_roles("psychologist")),
+    session: Session = Depends(get_db),
+) -> dict:
+    with appointment_write_lock(session):
+        assignment = session.scalar(select(ConsultationAssignment).where(
+            ConsultationAssignment.id == assignment_id, ConsultationAssignment.psychologist_id == staff.id,
+        ))
+        if not assignment:
+            raise HTTPException(status_code=404, detail="个案不存在或未分配给当前咨询师")
+        now = datetime.now(timezone.utc)
+        if payload.action == "confirm":
+            if assignment.status != "appointment_requested" or not assignment.scheduled_at:
+                raise HTTPException(status_code=409, detail="预约状态已变化，请刷新查看")
+            when = assignment.scheduled_at.replace(tzinfo=assignment.scheduled_at.tzinfo or timezone.utc)
+            if when <= now:
+                raise HTTPException(status_code=409, detail="意向时间已过，请学生重新选择")
+            conflict = occupied_psychologist_ids(session, when, [staff.id], assignment.id)
+            if conflict:
+                raise HTTPException(status_code=409, detail="该时段已被其他预约占用，请让学生重新选择")
+            assignment.status = "scheduled"
+        elif payload.action == "reschedule":
+            if assignment.status not in ("appointment_requested", "scheduled"):
+                raise HTTPException(status_code=409, detail="当前状态不能重新选择时间")
+            assignment.status = "assigned"
+            assignment.scheduled_at = None
+        else:
+            if assignment.work_order_id:
+                raise HTTPException(status_code=409, detail="此个案来自转介，请在对应工单中完成处置")
+            if assignment.status not in ("scheduled", "active"):
+                raise HTTPException(status_code=409, detail="请在约定服务完成后再结案")
+            assignment.status = "completed"
+        session.add(AuditLog(actor_type="staff", actor_id=staff.id, action="consultation." + payload.action,
+                             resource_type="consultation", resource_id=assignment.id))
+        session.commit()
+        return {"status": assignment.status}
 
 
 @router.get("/intervention-archives")

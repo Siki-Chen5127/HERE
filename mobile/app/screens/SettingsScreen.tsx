@@ -89,11 +89,15 @@ interface MenuRowProps {
   onPress: () => void
   isLast?: boolean
   rightElement?: React.ReactNode
+  testID?: string
 }
 
-const MenuRow = ({ icon, label, onPress, isLast, rightElement }: MenuRowProps) => {
+const MenuRow = ({ icon, label, onPress, isLast, rightElement, testID }: MenuRowProps) => {
   return (
     <TouchableOpacity
+      testID={testID}
+      accessibilityRole={rightElement ? undefined : "button"}
+      accessibilityLabel={label}
       style={[styles.menuRow, $styles.rowBetween, isLast && styles.lastRow]}
       onPress={onPress}
       activeOpacity={0.7}
@@ -204,7 +208,7 @@ export const SettingsScreen: FC<any> = ({ navigation }) => {
         {/* 2. 常用功能 */}
         {desktop && <Text text="档案与联系人" style={styles.sectionTitle} />}
         <View style={[styles.glassCard, styles.commonMenu]}>
-          <MenuRow icon="profile" label="个人档案" onPress={() => navigateTo("ProfileEdit")} />
+          <MenuRow testID="settings-profile" icon="profile" label="个人档案" onPress={() => navigateTo("ProfileEdit")} />
           <MenuRow icon="history" label="历史轨迹记录" onPress={() => navigateTo("Trajectory")} />
           <MenuRow
             icon="contact"

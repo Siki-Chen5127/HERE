@@ -335,6 +335,25 @@ def test_staff_and_mobile_end_to_end_flow():
         assert psychologist_work_orders.json()[0]["status"] == "referred"
         assert psychologist_work_orders.json()[0]["studentPhone"] == "13800000000"
 
+
+        # The existing referral keeps the same assignment through scheduling.
+        from datetime import datetime, timedelta, timezone
+        mobile_headers = {"Authorization": f"Bearer {student_token}"}
+        cases = client.get("/api/v1/mobile/consultations", headers=mobile_headers)
+        assert cases.status_code == 200
+        referral = next(row for row in cases.json() if row["referred"])
+        assert referral["status"] == "assigned"
+        from app.appointments import CAMPUS_TZ, slot_start
+        preferred = slot_start(datetime.now(CAMPUS_TZ).date() + timedelta(days=3), 14).isoformat()
+        requested = client.post("/api/v1/mobile/consultations/appointments", headers=mobile_headers, json={
+            "assignment_id": referral["id"], "preferred_at": preferred, "consent": True,
+        })
+        assert requested.status_code == 201
+        assert requested.json()["id"] == referral["id"]
+        action_path = f"/api/v1/consultations/{referral['id']}/appointment"
+        assert client.patch(action_path, headers=psychologist_headers, json={"action": "confirm"}).status_code == 200
+        assert client.get("/api/v1/mobile/consultations", headers=mobile_headers).json()[0]["status"] == "scheduled"
+
         resolved = client.post(
             f"/api/v1/workorders/{work_order_id}/resolve",
             headers=psychologist_headers,
@@ -773,3 +792,187 @@ def test_staff_and_mobile_end_to_end_flow():
         assert readable_entry["actorAccount"] == "admin@here.edu"
         assert readable_entry["actionLabel"] == "管理员导入知识资料"
         assert readable_entry["resourceName"] == "管理员导入指南（修订）.pdf"
+
+
+
+def test_student_profile_fields_and_support_progress_are_linked():
+    # The test suite uses an isolated in-memory database.
+    with TestClient(app) as client:
+        with SessionLocal() as session:
+            counselor = StaffUser(email="profile-link-demo@here.test", password_hash=hash_password("ProfileTest123!"),
+                                  name="Demo Counselor", role="counselor", department="Demo")
+            session.add(counselor)
+            session.flush()
+            session.add(StaffProfile(staff_user_id=counselor.id, real_name=counselor.name, display_name=counselor.name,
+                                    phone="10000000070", organization="Demo", department="Demo",
+                                    college="Demo College Profile", employee_number="DEMO-PROFILE"))
+            session.commit()
+        def register(phone):
+            response = client.post("/api/v1/auth/mobile/register", json={
+                "phone": phone, "password": "ProfileTest123!", "display_name": "Demo Student",
+                "college": "Demo College Profile",
+            })
+            assert response.status_code == 201
+            return {"Authorization": "Bearer " + response.json()["access_token"]}, response.json()["user"]["id"]
+
+        first, student_id = register("10000000071")
+        second, second_id = register("10000000072")
+        assert client.get("/api/v1/mobile/support-requests", headers=first).json() == []
+
+        # The weekly reflection uses only user-authorized context, not fixed deductions.
+        from app.deepseek_service import DeepSeekResult, DeepSeekServiceError
+        payload = {
+            "moods": [{"day": "2026-11-25", "mood": "okay"}, {"day": "2026-11-26", "mood": "tired"}],
+            "survey": {"rest": "昨晚睡得一般", "stress": "作业较多", "support": "希望有时间休息"},
+            "support": {"submitted": 1, "awaiting": 1, "followed_up": 0, "completed": 0},
+            "night_context": {"routine": 1},
+        }
+        path = "/api/v1/mobile/ai/weekly-reflection"
+        assert client.post(path, json=payload).status_code == 401
+        with patch("app.routers.mobile.create_deepseek_completion", return_value=DeepSeekResult(
+            content='{"score": 70, "summary": "这周有些疲惫，愿意求助很值得肯定。"}', model="test-model"
+        )) as completion:
+            reflected = client.post(path, headers=first, json=payload)
+            assert reflected.status_code == 200, reflected.text
+            assert reflected.json()["score"] == 70
+            assert reflected.json()["model"] == "test-model"
+            assert "求助次数、工单进度、任何夜间活动均不得加减分" in completion.call_args.kwargs["system_prompt"]
+            message = completion.call_args.kwargs["messages"][0]["content"]
+            assert '"night_context":{"routine":1}' in message
+            assert "安全评分" not in message
+            sparse = client.post(path, headers=first, json={**payload, "moods": payload["moods"][:1], "survey": None})
+            assert sparse.status_code == 200 and sparse.json()["score"] is None
+            absent = client.post(path, headers=first, json={**payload, "moods": [], "survey": None})
+            assert absent.status_code == 422
+            duplicate = client.post(path, headers=first, json={**payload, "moods": [payload["moods"][0]] * 2})
+            assert duplicate.status_code == 422
+        with patch("app.routers.mobile.create_deepseek_completion", return_value=DeepSeekResult(
+            content='{"score": 120, "summary": "无效结果"}', model="test-model"
+        )):
+            assert client.post(path, headers=first, json=payload).status_code == 502
+        with patch("app.routers.mobile.create_deepseek_completion", side_effect=DeepSeekServiceError("AI 服务暂不可用")):
+            assert client.post(path, headers=first, json=payload).status_code == 503
+
+        profile = {"display_name": "Demo Student", "college": "Demo College Profile",
+                   "student_number": "00020260071", "class_name": "Demo Class 01"}
+        saved = client.patch("/api/v1/mobile/profile", json=profile, headers=first)
+        assert saved.status_code == 200, saved.text
+        readback = client.get("/api/v1/mobile/profile", headers=first).json()
+        assert readback["studentNumber"] == "00020260071"
+        assert readback["className"] == "Demo Class 01"
+        assert client.patch("/api/v1/mobile/profile", json=profile, headers=second).status_code == 409
+
+        # Older clients that omit the new fields must not erase them.
+        assert client.patch("/api/v1/mobile/profile", headers=first, json={
+            "display_name": "Demo Student", "college": "Demo College Profile",
+        }).status_code == 200
+        staff_login = client.post("/api/v1/auth/staff/login", json={
+            "email": "profile-link-demo@here.test", "password": "ProfileTest123!",
+        })
+        assert staff_login.status_code == 200
+        staff = {"Authorization": "Bearer " + staff_login.json()["access_token"]}
+        students = client.get("/api/v1/students", headers=staff)
+        assert students.status_code == 200
+        assert len(students.json()) == 1
+        student = students.json()[0]
+        assert student["id"] == student_id
+        assert student["studentNumber"] == "00020260071"
+        assert student["className"] == "Demo Class 01"
+
+        request = client.post("/api/v1/mobile/alerts", headers=first, json={
+            "client_event_id": "demo-profile-support-flow", "category": "student_support",
+            "severity": "low", "description": "Demo request",
+        })
+        assert request.status_code in (200, 201, 202), request.text
+        progress = client.get("/api/v1/mobile/support-requests", headers=first)
+        assert progress.status_code == 200
+        assert len(progress.json()) == 1
+        assert progress.json()[0]["message"] == "Demo request"
+        assert client.get("/api/v1/mobile/support-requests", headers=second).json() == []
+
+        cleared = client.patch("/api/v1/mobile/profile", headers=first, json={
+            "display_name": "Demo Student", "college": "Demo College Profile",
+            "student_number": None, "class_name": None,
+        })
+        assert cleared.status_code == 200
+        assert cleared.json()["studentNumber"] is None
+        assert cleared.json()["className"] is None
+
+        # Direct appointments and staff confirmation share the same persisted assignment.
+        from datetime import datetime, timedelta, timezone
+        with SessionLocal() as session:
+            ps = StaffUser(email="weekly-appointment-psych@here.test", password_hash=hash_password("AppointmentTest123!"),
+                           name="预约测试咨询师", role="psychologist", department="Demo")
+            session.add(ps)
+            session.commit()
+        from app.appointments import CAMPUS_TZ, slot_start, active_psychologist_ids
+        day = datetime.now(CAMPUS_TZ).date() + timedelta(days=2)
+        when = slot_start(day, 14).isoformat()
+        availability_path = '/api/v1/mobile/consultations/availability'
+        def slot(headers, assignment_id=None, hour=14):
+            params = {'day': day.isoformat()}
+            if assignment_id: params['assignment_id'] = assignment_id
+            response = client.get(availability_path, params=params, headers=headers)
+            assert response.status_code == 200, response.text
+            return next(item for item in response.json()['slots'] if item['hour'] == hour)
+        assert slot(first)['available'] is True
+        appointment_path = "/api/v1/mobile/consultations/appointments"
+        body = {"preferred_at": when, "consent": True}
+        assert client.post(appointment_path, json=body).status_code == 401
+        assert client.post(appointment_path, headers=first, json={**body, "consent": False}).status_code == 422
+        assert client.post(appointment_path, headers=first, json={**body, "preferred_at": "2020-01-01T00:00:00Z"}).status_code == 422
+        assert client.post(appointment_path, headers=first, json={**body, "preferred_at": (slot_start(day, 14) + timedelta(seconds=5)).isoformat()}).status_code == 422
+        created = client.post(appointment_path, headers=first, json=body)
+        assert created.status_code == 201, created.text
+        case = created.json()
+        assert case["status"] == "appointment_requested"
+        assert case["scheduledAt"] == when
+        assert case["referred"] is False
+        assignment_id = case["id"]
+        with SessionLocal() as session:
+            assigned = session.get(ConsultationAssignment, assignment_id)
+            selected = session.get(StaffUser, assigned.psychologist_id)
+            email = selected.email
+            selected_id = selected.id
+            candidate_count = len(active_psychologist_ids(session))
+        # Anonymous student availability: a slot may still have capacity with another counselor.
+        assert slot(second)["available"] == (candidate_count > 1)
+        assert client.get(availability_path, params={"day": day.isoformat(), "assignment_id": assignment_id}, headers=second).status_code == 404
+        password = "AppointmentTest123!" if email == "weekly-appointment-psych@here.test" else "Psychologist123!"
+        login = client.post("/api/v1/auth/staff/login", json={"email": email, "password": password})
+        assert login.status_code == 200
+        psychologist = {"Authorization": "Bearer " + login.json()["access_token"]}
+        assert client.get("/api/v1/mobile/consultations", headers=second).json() == []
+        assert client.post(appointment_path, headers=second, json={**body, "assignment_id": assignment_id}).status_code == 404
+        assert client.post(f"/api/v1/mobile/consultations/{assignment_id}/cancel", headers=second).status_code == 404
+        assert client.post(appointment_path, headers=first, json=body).status_code == 409
+        # Same counselor, separate student: the pending request already reserves the time.
+        with SessionLocal() as session:
+            second_assigned = ConsultationAssignment(student_id=second_id, psychologist_id=selected_id, status="assigned")
+            session.add(second_assigned)
+            session.commit()
+            second_case = second_assigned.id
+        assert slot(second, second_case)["state"] == "occupied"
+        assert slot(second, second_case, hour=15)["available"] is True
+        assert client.post(appointment_path, headers=second, json={**body, "assignment_id": second_case}).status_code == 409
+        path = f"/api/v1/consultations/{assignment_id}/appointment"
+        assert client.patch(path, headers=staff, json={"action": "confirm"}).status_code == 403
+        listed = client.get("/api/v1/consultations", headers=psychologist).json()
+        assert any(entry["id"] == assignment_id and entry["status"] == "appointment_requested" for entry in listed)
+        assert client.patch(path, headers=psychologist, json={"action": "reschedule"}).json()["status"] == "assigned"
+        assert client.get("/api/v1/mobile/consultations", headers=first).json()[0]["scheduledAt"] is None
+        assert slot(second, second_case)["available"] is True
+        second_request = client.post(appointment_path, headers=second, json={**body, "assignment_id": second_case})
+        assert second_request.status_code == 201
+        assert slot(first, assignment_id)["state"] == "occupied"
+        assert client.post(appointment_path, headers=first, json={**body, "assignment_id": assignment_id}).status_code == 409
+        assert client.post(f"/api/v1/mobile/consultations/{second_case}/cancel", headers=second).status_code == 200
+        assert slot(first, assignment_id)["available"] is True
+        repeated = client.post(appointment_path, headers=first, json={**body, "assignment_id": assignment_id})
+        assert repeated.status_code == 201 and repeated.json()["id"] == assignment_id
+        assert client.patch(path, headers=psychologist, json={"action": "confirm"}).json()["status"] == "scheduled"
+        assert client.get("/api/v1/mobile/consultations", headers=first).json()[0]["status"] == "scheduled"
+        assert client.post(f"/api/v1/mobile/consultations/{assignment_id}/cancel", headers=first).json()["status"] == "cancelled"
+        assert slot(second)["available"] is True
+        another = client.post(appointment_path, headers=first, json=body)
+        assert another.status_code == 201 and another.json()["id"] != assignment_id
